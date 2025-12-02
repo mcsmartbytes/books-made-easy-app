@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/utils/supabase';
 
@@ -23,6 +24,7 @@ interface RecentActivity {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [stats, setStats] = useState<DashboardStats>({
     totalRevenue: 0,
     outstandingReceivables: 0,
@@ -40,18 +42,45 @@ export default function DashboardPage() {
     const loadDashboard = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        setUserName(session.user.user_metadata?.full_name || 'there');
+        // Check if onboarding is complete
+        const { data: settings } = await supabase
+          .from('company_settings')
+          .select('industry_id, company_name')
+          .eq('user_id', session.user.id)
+          .single();
 
-        // Load stats - for now using placeholder data since tables don't exist yet
-        // In production, these would come from actual Supabase queries
+        if (!settings?.industry_id) {
+          router.push('/onboarding');
+          return;
+        }
+
+        setUserName(settings.company_name || session.user.user_metadata?.full_name || 'there');
+
+        // Load real stats from database
+        const [customersResult, vendorsResult, invoicesResult, billsResult] = await Promise.all([
+          supabase.from('customers').select('id', { count: 'exact' }).eq('user_id', session.user.id),
+          supabase.from('vendors').select('id', { count: 'exact' }).eq('user_id', session.user.id),
+          supabase.from('invoices').select('*').eq('user_id', session.user.id),
+          supabase.from('bills').select('*').eq('user_id', session.user.id),
+        ]);
+
+        const invoices = invoicesResult.data || [];
+        const bills = billsResult.data || [];
+
+        const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (i.total || 0), 0);
+        const outstandingReceivables = invoices.filter(i => i.status === 'sent' || i.status === 'overdue').reduce((sum, i) => sum + ((i.total || 0) - (i.amount_paid || 0)), 0);
+        const outstandingPayables = bills.filter(b => b.status === 'unpaid' || b.status === 'overdue').reduce((sum, b) => sum + ((b.total || 0) - (b.amount_paid || 0)), 0);
+        const invoicesDue = invoices.filter(i => i.status === 'sent' || i.status === 'overdue').length;
+        const billsDue = bills.filter(b => b.status === 'unpaid' || b.status === 'overdue').length;
+
         setStats({
-          totalRevenue: 125750.00,
-          outstandingReceivables: 34500.00,
-          outstandingPayables: 12750.00,
-          customersCount: 48,
-          vendorsCount: 15,
-          invoicesDue: 8,
-          billsDue: 3,
+          totalRevenue,
+          outstandingReceivables,
+          outstandingPayables,
+          customersCount: customersResult.count || 0,
+          vendorsCount: vendorsResult.count || 0,
+          invoicesDue,
+          billsDue,
         });
 
         setRecentActivity([
