@@ -160,10 +160,10 @@ export default function DashboardPage() {
         <p className="text-corporate-gray mt-1">Here&apos;s what&apos;s happening with your business today.</p>
       </div>
 
-      {/* Stats grid */}
+      {/* Stats grid - clickable to drill down */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Total Revenue */}
-        <div className="stat-card">
+        <Link href="/dashboard/reports/profit-loss" className="stat-card hover:ring-2 hover:ring-green-200 transition-all cursor-pointer">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-corporate-gray">Total Revenue</p>
@@ -179,12 +179,12 @@ export default function DashboardPage() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
             </svg>
-            12% from last month
+            Click to view P&L report
           </p>
-        </div>
+        </Link>
 
         {/* Outstanding Receivables */}
-        <div className="stat-card">
+        <Link href="/dashboard/invoices?status=sent" className="stat-card hover:ring-2 hover:ring-blue-200 transition-all cursor-pointer">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-corporate-gray">Outstanding AR</p>
@@ -196,11 +196,11 @@ export default function DashboardPage() {
               </svg>
             </div>
           </div>
-          <p className="text-xs text-corporate-gray mt-2">{stats.invoicesDue} invoices due</p>
-        </div>
+          <p className="text-xs text-blue-600 mt-2">{stats.invoicesDue} invoices due → Click to view</p>
+        </Link>
 
         {/* Outstanding Payables */}
-        <div className="stat-card">
+        <Link href="/dashboard/bills?status=unpaid" className="stat-card hover:ring-2 hover:ring-orange-200 transition-all cursor-pointer">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-corporate-gray">Outstanding AP</p>
@@ -212,11 +212,11 @@ export default function DashboardPage() {
               </svg>
             </div>
           </div>
-          <p className="text-xs text-corporate-gray mt-2">{stats.billsDue} bills due</p>
-        </div>
+          <p className="text-xs text-orange-600 mt-2">{stats.billsDue} bills due → Click to view</p>
+        </Link>
 
         {/* Customers & Vendors */}
-        <div className="stat-card">
+        <Link href="/dashboard/customers" className="stat-card hover:ring-2 hover:ring-purple-200 transition-all cursor-pointer">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-corporate-gray">Contacts</p>
@@ -228,8 +228,8 @@ export default function DashboardPage() {
               </svg>
             </div>
           </div>
-          <p className="text-xs text-corporate-gray mt-2">{stats.customersCount} customers, {stats.vendorsCount} vendors</p>
-        </div>
+          <p className="text-xs text-purple-600 mt-2">{stats.customersCount} customers, {stats.vendorsCount} vendors</p>
+        </Link>
       </div>
 
       {/* Two column layout */}

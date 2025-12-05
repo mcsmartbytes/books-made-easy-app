@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS custom_reports (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   description TEXT,
-  data_source TEXT NOT NULL CHECK (data_source IN ('invoices', 'bills', 'payments', 'customers', 'vendors', 'products', 'jobs', 'journal_entries')),
+  data_source TEXT NOT NULL CHECK (data_source IN ('invoices', 'bills', 'payments', 'customers', 'vendors', 'products', 'jobs', 'journal_entries', 'accounts')),
   columns JSONB NOT NULL DEFAULT '[]',
   filters JSONB NOT NULL DEFAULT '[]',
   sort_by TEXT,

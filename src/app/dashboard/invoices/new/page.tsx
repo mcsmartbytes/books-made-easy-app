@@ -99,12 +99,12 @@ export default function NewInvoicePage() {
 
     setProducts(productsData || []);
 
-    // Load jobs
+    // Load jobs (pending and in_progress)
     const { data: jobsData } = await supabase
       .from('jobs')
       .select('id, job_number, name, customer_id')
       .eq('user_id', session.user.id)
-      .in('status', ['not_started', 'in_progress'])
+      .in('status', ['pending', 'in_progress'])
       .order('job_number');
 
     setJobs(jobsData || []);
@@ -388,9 +388,10 @@ export default function NewInvoicePage() {
                     <div className="col-span-4 sm:col-span-2">
                       <input
                         type="number"
-                        min="1"
+                        min="0.01"
+                        step="0.01"
                         value={item.quantity}
-                        onChange={(e) => updateLineItem(item.id, 'quantity', parseInt(e.target.value) || 0)}
+                        onChange={(e) => updateLineItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
                         className="input-field"
                       />
                     </div>
@@ -460,36 +461,51 @@ export default function NewInvoicePage() {
             </div>
 
             {/* Job Selection */}
-            {customerJobs.length > 0 && (
-              <div className="card">
-                <h2 className="text-lg font-semibold text-corporate-dark mb-4">Link to Job</h2>
-                <p className="text-sm text-corporate-gray mb-3">
-                  Optionally link this invoice to a job for tracking
-                </p>
-                <select
-                  value={selectedJob?.id || ''}
-                  onChange={(e) => {
-                    const job = jobs.find(j => j.id === e.target.value);
-                    setSelectedJob(job || null);
-                  }}
-                  className="input-field"
-                >
-                  <option value="">No job selected</option>
-                  {customerJobs.map(job => (
-                    <option key={job.id} value={job.id}>
-                      {job.job_number} - {job.name}
-                    </option>
-                  ))}
-                </select>
-                {selectedJob && (
-                  <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                    <p className="text-sm text-blue-700">
-                      This invoice will be linked to job <strong>{selectedJob.job_number}</strong>
-                    </p>
+            <div className="card">
+              <h2 className="text-lg font-semibold text-corporate-dark mb-4">Link to Job</h2>
+              <p className="text-sm text-corporate-gray mb-3">
+                Optionally link this invoice to a job for tracking
+              </p>
+              {selectedCustomer ? (
+                customerJobs.length > 0 ? (
+                  <>
+                    <select
+                      value={selectedJob?.id || ''}
+                      onChange={(e) => {
+                        const job = jobs.find(j => j.id === e.target.value);
+                        setSelectedJob(job || null);
+                      }}
+                      className="input-field"
+                    >
+                      <option value="">No job selected</option>
+                      {customerJobs.map(job => (
+                        <option key={job.id} value={job.id}>
+                          {job.job_number} - {job.name}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedJob && (
+                      <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                        <p className="text-sm text-blue-700">
+                          This invoice will be linked to job <strong>{selectedJob.job_number}</strong>
+                        </p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="p-3 bg-gray-50 rounded-lg text-sm text-corporate-gray">
+                    No active jobs for this customer.{' '}
+                    <Link href="/dashboard/jobs/new" className="text-primary-600 hover:underline">
+                      Create a job
+                    </Link>
                   </div>
-                )}
-              </div>
-            )}
+                )
+              ) : (
+                <div className="p-3 bg-gray-50 rounded-lg text-sm text-corporate-gray">
+                  Select a customer first to see available jobs
+                </div>
+              )}
+            </div>
 
             <div className="card bg-corporate-light">
               <div className="space-y-3">

@@ -7,13 +7,21 @@ import { supabase } from '@/utils/supabase';
 interface Invoice {
   id: string;
   invoice_number: string;
-  customer_name: string;
-  customer_email: string;
-  amount: number;
-  status: 'draft' | 'sent' | 'paid' | 'overdue';
+  customer_id: string;
+  job_id: string | null;
+  total: number;
+  amount_paid: number;
+  status: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
   issue_date: string;
   due_date: string;
-  items: { description: string; quantity: number; rate: number }[];
+  customers?: {
+    name: string;
+    email: string;
+  };
+  jobs?: {
+    job_number: string;
+    name: string;
+  };
 }
 
 export default function InvoicesPage() {
@@ -30,15 +38,29 @@ export default function InvoicesPage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
 
-    // Mock data
-    const mockInvoices: Invoice[] = [
-      { id: '1', invoice_number: 'INV-1001', customer_name: 'Acme Corp', customer_email: 'john@acmecorp.com', amount: 5250.00, status: 'sent', issue_date: '2024-12-01', due_date: '2024-12-15', items: [] },
-      { id: '2', invoice_number: 'INV-1000', customer_name: 'Tech Solutions Inc', customer_email: 'sarah@techsolutions.com', amount: 8500.00, status: 'paid', issue_date: '2024-11-15', due_date: '2024-11-30', items: [] },
-      { id: '3', invoice_number: 'INV-0999', customer_name: 'Innovate.io', customer_email: 'michael@innovate.io', amount: 3200.00, status: 'overdue', issue_date: '2024-11-01', due_date: '2024-11-15', items: [] },
-      { id: '4', invoice_number: 'INV-0998', customer_name: 'Design Co', customer_email: 'emily@designco.com', amount: 1500.00, status: 'draft', issue_date: '2024-12-02', due_date: '2024-12-16', items: [] },
-      { id: '5', invoice_number: 'INV-0997', customer_name: 'Global Services LLC', customer_email: 'robert@globalservices.com', amount: 12750.00, status: 'sent', issue_date: '2024-11-28', due_date: '2024-12-12', items: [] },
-    ];
-    setInvoices(mockInvoices);
+    const { data, error } = await supabase
+      .from('invoices')
+      .select(`
+        *,
+        customers (name, email),
+        jobs (job_number, name)
+      `)
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error loading invoices:', error);
+    } else {
+      // Update status to overdue if past due date and not paid
+      const today = new Date().toISOString().split('T')[0];
+      const updatedInvoices = (data || []).map(inv => {
+        if ((inv.status === 'sent') && inv.due_date < today) {
+          return { ...inv, status: 'overdue' as const };
+        }
+        return inv;
+      });
+      setInvoices(updatedInvoices);
+    }
     setLoading(false);
   };
 
@@ -55,27 +77,33 @@ export default function InvoicesPage() {
       sent: 'bg-blue-100 text-blue-700',
       paid: 'bg-green-100 text-green-700',
       overdue: 'bg-red-100 text-red-700',
+      cancelled: 'bg-gray-100 text-gray-500',
     };
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status]}`}>
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || styles.draft}`}>
         {status.charAt(0).toUpperCase() + status.slice(1)}
       </span>
     );
   };
 
   const filteredInvoices = invoices.filter(invoice => {
-    const matchesSearch = invoice.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.customer_name.toLowerCase().includes(searchTerm.toLowerCase());
+    const customerData = invoice.customers as { name: string; email: string } | null;
+    const jobData = invoice.jobs as { job_number: string; name: string } | null;
+
+    const matchesSearch =
+      invoice.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customerData?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      jobData?.name?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || invoice.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const totals = {
-    all: invoices.reduce((sum, i) => sum + i.amount, 0),
-    draft: invoices.filter(i => i.status === 'draft').reduce((sum, i) => sum + i.amount, 0),
-    sent: invoices.filter(i => i.status === 'sent').reduce((sum, i) => sum + i.amount, 0),
-    overdue: invoices.filter(i => i.status === 'overdue').reduce((sum, i) => sum + i.amount, 0),
-    paid: invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.amount, 0),
+    all: invoices.reduce((sum, i) => sum + (i.total || 0), 0),
+    draft: invoices.filter(i => i.status === 'draft').reduce((sum, i) => sum + (i.total || 0), 0),
+    sent: invoices.filter(i => i.status === 'sent').reduce((sum, i) => sum + ((i.total || 0) - (i.amount_paid || 0)), 0),
+    overdue: invoices.filter(i => i.status === 'overdue').reduce((sum, i) => sum + ((i.total || 0) - (i.amount_paid || 0)), 0),
+    paid: invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (i.total || 0), 0),
   };
 
   if (loading) {
@@ -102,28 +130,40 @@ export default function InvoicesPage() {
         </Link>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary cards - clickable to filter */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="stat-card cursor-pointer hover:ring-2 hover:ring-primary-200" onClick={() => setStatusFilter('all')}>
+        <button
+          onClick={() => setStatusFilter('all')}
+          className={`stat-card text-left cursor-pointer transition-all ${statusFilter === 'all' ? 'ring-2 ring-primary-400' : 'hover:ring-2 hover:ring-primary-200'}`}
+        >
           <p className="text-sm text-corporate-gray">Total</p>
           <p className="text-xl font-bold text-corporate-dark">{formatCurrency(totals.all)}</p>
           <p className="text-xs text-corporate-gray">{invoices.length} invoices</p>
-        </div>
-        <div className="stat-card cursor-pointer hover:ring-2 hover:ring-blue-200" onClick={() => setStatusFilter('sent')}>
+        </button>
+        <button
+          onClick={() => setStatusFilter('sent')}
+          className={`stat-card text-left cursor-pointer transition-all ${statusFilter === 'sent' ? 'ring-2 ring-blue-400' : 'hover:ring-2 hover:ring-blue-200'}`}
+        >
           <p className="text-sm text-corporate-gray">Outstanding</p>
           <p className="text-xl font-bold text-blue-600">{formatCurrency(totals.sent)}</p>
           <p className="text-xs text-corporate-gray">{invoices.filter(i => i.status === 'sent').length} sent</p>
-        </div>
-        <div className="stat-card cursor-pointer hover:ring-2 hover:ring-red-200" onClick={() => setStatusFilter('overdue')}>
+        </button>
+        <button
+          onClick={() => setStatusFilter('overdue')}
+          className={`stat-card text-left cursor-pointer transition-all ${statusFilter === 'overdue' ? 'ring-2 ring-red-400' : 'hover:ring-2 hover:ring-red-200'}`}
+        >
           <p className="text-sm text-corporate-gray">Overdue</p>
           <p className="text-xl font-bold text-red-600">{formatCurrency(totals.overdue)}</p>
           <p className="text-xs text-corporate-gray">{invoices.filter(i => i.status === 'overdue').length} overdue</p>
-        </div>
-        <div className="stat-card cursor-pointer hover:ring-2 hover:ring-green-200" onClick={() => setStatusFilter('paid')}>
+        </button>
+        <button
+          onClick={() => setStatusFilter('paid')}
+          className={`stat-card text-left cursor-pointer transition-all ${statusFilter === 'paid' ? 'ring-2 ring-green-400' : 'hover:ring-2 hover:ring-green-200'}`}
+        >
           <p className="text-sm text-corporate-gray">Collected</p>
           <p className="text-xl font-bold text-green-600">{formatCurrency(totals.paid)}</p>
           <p className="text-xs text-corporate-gray">{invoices.filter(i => i.status === 'paid').length} paid</p>
-        </div>
+        </button>
       </div>
 
       {/* Search and filters */}
@@ -135,7 +175,7 @@ export default function InvoicesPage() {
             </svg>
             <input
               type="text"
-              placeholder="Search invoices..."
+              placeholder="Search invoices, customers, or jobs..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="input-field pl-10"
@@ -163,6 +203,7 @@ export default function InvoicesPage() {
               <tr>
                 <th>Invoice</th>
                 <th>Customer</th>
+                <th>Job</th>
                 <th>Issue Date</th>
                 <th>Due Date</th>
                 <th>Status</th>
@@ -173,76 +214,92 @@ export default function InvoicesPage() {
             <tbody>
               {filteredInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-corporate-gray">
-                    No invoices found
+                  <td colSpan={8} className="text-center py-8 text-corporate-gray">
+                    {invoices.length === 0 ? (
+                      <div>
+                        <p className="mb-2">No invoices yet</p>
+                        <Link href="/dashboard/invoices/new" className="text-primary-600 hover:underline">
+                          Create your first invoice
+                        </Link>
+                      </div>
+                    ) : (
+                      'No invoices match your search'
+                    )}
                   </td>
                 </tr>
               ) : (
-                filteredInvoices.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <td>
-                      <Link href={`/dashboard/invoices/${invoice.id}`} className="font-medium text-primary-600 hover:text-primary-700">
-                        {invoice.invoice_number}
-                      </Link>
-                    </td>
-                    <td>
-                      <p className="font-medium text-corporate-dark">{invoice.customer_name}</p>
-                      <p className="text-xs text-corporate-gray">{invoice.customer_email}</p>
-                    </td>
-                    <td className="text-corporate-slate">
-                      {new Date(invoice.issue_date).toLocaleDateString()}
-                    </td>
-                    <td className="text-corporate-slate">
-                      {new Date(invoice.due_date).toLocaleDateString()}
-                    </td>
-                    <td>{getStatusBadge(invoice.status)}</td>
-                    <td className="text-right font-semibold text-corporate-dark">
-                      {formatCurrency(invoice.amount)}
-                    </td>
-                    <td className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Link
-                          href={`/dashboard/invoices/${invoice.id}`}
-                          className="p-2 text-corporate-gray hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                          title="View"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
+                filteredInvoices.map((invoice) => {
+                  const customerData = invoice.customers as { name: string; email: string } | null;
+                  const jobData = invoice.jobs as { job_number: string; name: string } | null;
+
+                  return (
+                    <tr key={invoice.id}>
+                      <td>
+                        <Link href={`/dashboard/invoices/${invoice.id}`} className="font-medium text-primary-600 hover:text-primary-700">
+                          {invoice.invoice_number}
                         </Link>
-                        {invoice.status === 'draft' && (
-                          <button
-                            className="p-2 text-corporate-gray hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                            title="Send"
+                      </td>
+                      <td>
+                        <p className="font-medium text-corporate-dark">{customerData?.name || 'Unknown'}</p>
+                        <p className="text-xs text-corporate-gray">{customerData?.email || ''}</p>
+                      </td>
+                      <td>
+                        {jobData ? (
+                          <Link href={`/dashboard/jobs/${invoice.job_id}`} className="text-sm text-primary-600 hover:underline">
+                            {jobData.job_number} - {jobData.name}
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-corporate-gray">—</span>
+                        )}
+                      </td>
+                      <td className="text-corporate-slate">
+                        {new Date(invoice.issue_date).toLocaleDateString()}
+                      </td>
+                      <td className="text-corporate-slate">
+                        {new Date(invoice.due_date).toLocaleDateString()}
+                      </td>
+                      <td>{getStatusBadge(invoice.status)}</td>
+                      <td className="text-right font-semibold text-corporate-dark">
+                        {formatCurrency(invoice.total || 0)}
+                      </td>
+                      <td className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Link
+                            href={`/dashboard/invoices/${invoice.id}`}
+                            className="p-2 text-corporate-gray hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                            title="View"
                           >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                             </svg>
-                          </button>
-                        )}
-                        {(invoice.status === 'sent' || invoice.status === 'overdue') && (
-                          <button
-                            className="p-2 text-corporate-gray hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                            title="Record Payment"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </button>
-                        )}
-                        <button
-                          className="p-2 text-corporate-gray hover:text-corporate-slate hover:bg-gray-100 rounded-lg transition-colors"
-                          title="Download PDF"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                          </svg>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          </Link>
+                          {invoice.status === 'draft' && (
+                            <button
+                              className="p-2 text-corporate-gray hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                              title="Send"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                              </svg>
+                            </button>
+                          )}
+                          {(invoice.status === 'sent' || invoice.status === 'overdue') && (
+                            <Link
+                              href={`/dashboard/payments/receive?invoice=${invoice.id}`}
+                              className="p-2 text-corporate-gray hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                              title="Record Payment"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            </Link>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

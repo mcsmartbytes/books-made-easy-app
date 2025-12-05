@@ -28,6 +28,7 @@ const DATA_SOURCES = [
   { id: 'products', label: 'Products & Services', description: 'Products and services catalog' },
   { id: 'jobs', label: 'Jobs', description: 'Job costing and projects' },
   { id: 'journal_entries', label: 'Journal Entries', description: 'Manual accounting entries' },
+  { id: 'accounts', label: 'Chart of Accounts', description: 'Account balances and details' },
 ];
 
 const COLUMN_OPTIONS: Record<string, ColumnConfig[]> = {
@@ -110,6 +111,15 @@ const COLUMN_OPTIONS: Record<string, ColumnConfig[]> = {
     { field: 'total_debits', label: 'Total Debits', type: 'currency', enabled: true },
     { field: 'total_credits', label: 'Total Credits', type: 'currency', enabled: true },
     { field: 'status', label: 'Status', type: 'status', enabled: true },
+  ],
+  accounts: [
+    { field: 'code', label: 'Account Code', type: 'text', enabled: true },
+    { field: 'name', label: 'Account Name', type: 'text', enabled: true },
+    { field: 'type', label: 'Type', type: 'text', enabled: true },
+    { field: 'subtype', label: 'Subtype', type: 'text', enabled: false },
+    { field: 'description', label: 'Description', type: 'text', enabled: false },
+    { field: 'balance', label: 'Balance', type: 'currency', enabled: true },
+    { field: 'is_active', label: 'Active', type: 'status', enabled: true },
   ],
 };
 
