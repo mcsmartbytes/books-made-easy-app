@@ -19,10 +19,10 @@ export default function Home() {
               <a href="#features" className="text-corporate-slate hover:text-primary-600 transition">Features</a>
               <a href="#pricing" className="text-corporate-slate hover:text-primary-600 transition">Pricing</a>
               <a href="#contact" className="text-corporate-slate hover:text-primary-600 transition">Contact</a>
-              <Link href="/auth/login" className="text-corporate-slate hover:text-primary-600 transition font-medium">
+              <Link href="/login" className="text-corporate-slate hover:text-primary-600 transition font-medium">
                 Sign In
               </Link>
-              <Link href="/auth/signup" className="btn-primary">
+              <Link href="/signup" className="btn-primary">
                 Get Started Free
               </Link>
             </div>
@@ -48,7 +48,7 @@ export default function Home() {
                 Simple, powerful, and designed for small businesses.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
-                <Link href="/auth/signup" className="btn-primary text-center">
+                <Link href="/signup" className="btn-primary text-center">
                   Start Free Trial
                 </Link>
                 <a href="#demo" className="btn-secondary bg-transparent border-white text-white hover:bg-white/10 text-center">
@@ -254,7 +254,7 @@ export default function Home() {
                   Email support
                 </li>
               </ul>
-              <Link href="/auth/signup" className="btn-outline w-full text-center block">
+              <Link href="/signup" className="btn-outline w-full text-center block">
                 Get Started
               </Link>
             </div>
@@ -302,7 +302,7 @@ export default function Home() {
                   Priority support
                 </li>
               </ul>
-              <Link href="/auth/signup" className="btn-secondary bg-white text-primary-600 hover:bg-gray-100 w-full text-center block">
+              <Link href="/signup" className="btn-secondary bg-white text-primary-600 hover:bg-gray-100 w-full text-center block">
                 Get Started
               </Link>
             </div>
@@ -347,7 +347,7 @@ export default function Home() {
                   Custom integrations
                 </li>
               </ul>
-              <Link href="/auth/signup" className="btn-outline w-full text-center block">
+              <Link href="/signup" className="btn-outline w-full text-center block">
                 Contact Sales
               </Link>
             </div>
@@ -365,7 +365,7 @@ export default function Home() {
             Join thousands of businesses managing their finances with Books Made Easy
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/auth/signup" className="btn-secondary bg-white text-primary-600 hover:bg-gray-100">
+            <Link href="/signup" className="btn-secondary bg-white text-primary-600 hover:bg-gray-100">
               Start Free Trial
             </Link>
             <a href="#contact" className="btn-outline border-white text-white hover:bg-white/10">
