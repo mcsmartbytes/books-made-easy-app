@@ -8,6 +8,7 @@
   "theme_color": "#3b82f6",
   "orientation": "portrait-primary",
   "scope": "/",
+  "id": "books-made-easy-app",
   "icons": [
     {
       "src": "/icons/icon-72x72.png",
