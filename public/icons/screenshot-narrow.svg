@@ -1,0 +1,8 @@
+
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280" viewBox="0 0 720 1280">
+  <rect width="720" height="1280" fill="#f1f5f9"/>
+  <rect x="0" y="0" width="720" height="60" fill="#1e293b"/>
+  <text x="20" y="38" font-family="Arial" font-size="20" fill="white" font-weight="bold">Books Made Easy</text>
+  <text x="360" y="640" dominant-baseline="middle" text-anchor="middle"
+        font-family="Arial" font-size="24" fill="#64748b">Mobile View</text>
+</svg>
