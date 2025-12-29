@@ -4,6 +4,7 @@ import { useEffect, useState, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/utils/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { User } from '@supabase/supabase-js';
 
 interface DashboardLayoutProps {
@@ -35,6 +36,7 @@ const integrationItems = [
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { user: authUser, loading: authLoading, isEmbedded } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -42,25 +44,33 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   useEffect(() => {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      if (!session && !isEmbedded) {
+        // Only redirect to login if not in embedded mode
         router.push('/login');
-      } else {
+      } else if (session) {
         setUser(session.user);
         setLoading(false);
+      } else if (isEmbedded && authUser) {
+        // In embedded mode, use the auth context user
+        setUser(authUser);
+        setLoading(false);
+      } else if (isEmbedded) {
+        // In embedded mode waiting for auth
+        setLoading(authLoading);
       }
     };
     checkUser();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
+      if (!session && !isEmbedded) {
         router.push('/login');
-      } else {
+      } else if (session) {
         setUser(session.user);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [router]);
+  }, [router, isEmbedded, authUser, authLoading]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -71,6 +81,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     return (
       <div className="min-h-screen bg-corporate-light flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
+
+  // In embedded mode, render just the content without sidebar/header
+  if (isEmbedded) {
+    return (
+      <div className="min-h-screen bg-corporate-light">
+        <main className="p-6">
+          {children}
+        </main>
       </div>
     );
   }

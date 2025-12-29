@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import Providers from "@/components/Providers";
 
 export const metadata: Metadata = {
   title: "Books Made Easy - Simple Accounting Software",
@@ -66,7 +67,9 @@ export default function RootLayout({
         <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-72x72.png" />
       </head>
       <body className="antialiased">
-        {children}
+        <Providers>
+          {children}
+        </Providers>
         {/* Service Worker Registration */}
         <script
           dangerouslySetInnerHTML={{
