@@ -5,14 +5,24 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  --background: #ffffff;
+  --background: #E2E6EC;
   --foreground: #0f172a;
+}
+
+html, body {
+  min-height: 100vh;
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
+  background: linear-gradient(135deg, #E2E6EC 0%, #D1D8E0 50%, #C4CDD8 100%);
+  background-attachment: fixed;
   font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Override any bg-gray-50 or bg-white on main containers */
+.min-h-screen {
+  background: transparent !important;
 }
 
 /* Corporate Design Utilities */
