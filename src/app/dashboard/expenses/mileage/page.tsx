@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { expensesSupabase } from '@/utils/expensesSupabase';
 import { useUserMode } from '@/contexts/UserModeContext';
+import { mileageTracker, MileageTrip as NativeTrip, TripLocation } from '@/utils/nativeMileageTracker';
 
 interface MileageTrip {
   id: string;
@@ -33,6 +34,7 @@ export default function MileagePage() {
   const [isBusiness, setIsBusiness] = useState(defaultIsBusiness);
   const [rate, _setRate] = useState(0.67); // 2024 IRS rate
   const [idleTime, setIdleTime] = useState(0);
+  const [isNativePlatform, setIsNativePlatform] = useState(false);
 
   const [typeFilter, setTypeFilter] = useState<'all' | 'business' | 'personal'>('all');
   const [dateFilter, setDateFilter] = useState<'all' | 'month' | 'quarter' | 'year'>('all');
@@ -53,14 +55,85 @@ export default function MileagePage() {
   const purposeRef = useRef('');
   const isBusinessRef = useRef(true);
 
+  // Check if running on native platform
+  useEffect(() => {
+    setIsNativePlatform(mileageTracker.isNativePlatform());
+  }, []);
+
+  // Save completed trip from native tracker
+  const saveNativeTrip = useCallback(async (trip: NativeTrip) => {
+    try {
+      const { data: { user } } = await expensesSupabase.auth.getUser();
+      if (!user) return;
+
+      let startLoc = '';
+      let endLoc = '';
+
+      if (trip.locations.length > 0) {
+        const first = trip.locations[0];
+        const last = trip.locations[trip.locations.length - 1];
+        startLoc = await reverseGeocode(first.latitude, first.longitude);
+        endLoc = await reverseGeocode(last.latitude, last.longitude);
+      }
+
+      const amount = trip.distance * rate;
+
+      await expensesSupabase.from('mileage').insert({
+        user_id: user.id,
+        date: trip.startTime.toISOString().split('T')[0],
+        distance: trip.distance,
+        start_location: startLoc || null,
+        end_location: endLoc || null,
+        purpose: trip.purpose || purpose || null,
+        is_business: trip.isBusiness,
+        rate,
+        amount
+      });
+
+      setPurpose('');
+      loadTrips();
+    } catch (error) {
+      console.error('Error saving native trip:', error);
+    }
+  }, [purpose, rate]);
+
+  // Setup native tracker callbacks
+  useEffect(() => {
+    if (isNativePlatform) {
+      mileageTracker.setCallbacks({
+        onLocationUpdate: (location: TripLocation, totalDistance: number) => {
+          setDistance(totalDistance);
+          if (location.speed) {
+            setCurrentSpeed(location.speed);
+          }
+        },
+        onTripStart: () => {
+          setIsTracking(true);
+        },
+        onTripEnd: (trip: NativeTrip) => {
+          setIsTracking(false);
+          setDistance(0);
+          if (trip.distance > 0.01) {
+            saveNativeTrip(trip);
+          }
+        },
+        onError: (error: Error) => {
+          console.error('Mileage tracker error:', error);
+        }
+      });
+    }
+  }, [isNativePlatform, saveNativeTrip]);
+
   useEffect(() => {
     loadTrips();
-    startSpeedMonitoring();
+    if (!isNativePlatform) {
+      startSpeedMonitoring();
+    }
     return () => {
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
       if (idleCheckIntervalRef.current) clearInterval(idleCheckIntervalRef.current);
     };
-  }, []);
+  }, [isNativePlatform]);
 
   // Update isBusiness when mode changes (only when not tracking)
   useEffect(() => {
@@ -201,6 +274,23 @@ export default function MileagePage() {
   }
 
   async function handleStartTracking(initialLat?: number, initialLon?: number) {
+    // Use native tracker if on mobile platform
+    if (isNativePlatform) {
+      try {
+        await mileageTracker.startTracking(isBusiness);
+        const pos = await mileageTracker.getCurrentPosition();
+        if (pos) {
+          const start = await reverseGeocode(pos.latitude, pos.longitude);
+          setStartLocation(start);
+        }
+      } catch (error) {
+        console.error('Failed to start native tracking:', error);
+        alert('Failed to start tracking. Please check location permissions.');
+      }
+      return;
+    }
+
+    // Web-based tracking
     setIsTracking(true);
     isTrackingRef.current = true;
     distanceRef.current = 0;
@@ -227,6 +317,14 @@ export default function MileagePage() {
   }
 
   async function handleStopTracking(isAutoSave = false) {
+    // Use native tracker if on mobile platform
+    if (isNativePlatform) {
+      // Trip will be saved via onTripEnd callback
+      await mileageTracker.stopTracking();
+      return;
+    }
+
+    // Web-based tracking
     setIsTracking(false);
     isTrackingRef.current = false;
     autoStartTriggered.current = false;
@@ -372,9 +470,18 @@ export default function MileagePage() {
       <div className="bg-white rounded-xl shadow-sm border p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Auto-Tracking</h2>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {isNativePlatform ? 'Background GPS Tracking' : 'Auto-Tracking'}
+            </h2>
             <p className="text-sm text-gray-600">Automatically starts when you drive over 5 mph</p>
-            <p className="text-xs text-gray-400 mt-1">Keep this page open while driving for tracking</p>
+            {isNativePlatform ? (
+              <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
+                Tracks in background - you can close this page
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 mt-1">Keep this page open while driving for tracking</p>
+            )}
           </div>
           <div className="text-right">
             <p className="text-3xl font-bold text-blue-600">{currentSpeed.toFixed(1)} mph</p>
