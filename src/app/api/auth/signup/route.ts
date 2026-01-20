@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import bcrypt from 'bcryptjs';
 
-const sql = neon(process.env.DATABASE_URL!);
+// Lazy-load SQL connection to avoid build-time errors
+function getSql() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set');
+  }
+  return neon(process.env.DATABASE_URL);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,6 +20,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const sql = getSql();
 
     // Check if user already exists
     const existingUsers = await sql`

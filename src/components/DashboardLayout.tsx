@@ -3,9 +3,7 @@
 import { useEffect, useState, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { User } from '@supabase/supabase-js';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -44,45 +42,18 @@ const integrationItems: { href: string; label: string; icon: string; color: stri
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user: authUser, loading: authLoading, isEmbedded } = useAuth();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, loading, isEmbedded, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session && !isEmbedded) {
-        // Only redirect to login if not in embedded mode
-        router.push('/login');
-      } else if (session) {
-        setUser(session.user);
-        setLoading(false);
-      } else if (isEmbedded && authUser) {
-        // In embedded mode, use the auth context user
-        setUser(authUser);
-        setLoading(false);
-      } else if (isEmbedded) {
-        // In embedded mode waiting for auth
-        setLoading(authLoading);
-      }
-    };
-    checkUser();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session && !isEmbedded) {
-        router.push('/login');
-      } else if (session) {
-        setUser(session.user);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [router, isEmbedded, authUser, authLoading]);
+    // Redirect to login if not authenticated and not in embedded mode
+    if (!loading && !user && !isEmbedded) {
+      router.push('/login');
+    }
+  }, [user, loading, isEmbedded, router]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
+    await signOut();
   };
 
   if (loading) {
@@ -215,12 +186,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="flex items-center gap-3 px-4 py-3">
               <div className="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center">
                 <span className="text-white font-semibold">
-                  {user?.user_metadata?.full_name?.charAt(0) || user?.email?.charAt(0).toUpperCase()}
+                  {user?.name?.charAt(0) || user?.email?.charAt(0).toUpperCase() || 'U'}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-white truncate">
-                  {user?.user_metadata?.full_name || 'User'}
+                  {user?.name || 'User'}
                 </p>
                 <p className="text-xs text-gray-400 truncate">{user?.email}</p>
               </div>

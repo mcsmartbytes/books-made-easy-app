@@ -4,7 +4,13 @@ import GoogleProvider from 'next-auth/providers/google';
 import { neon } from '@neondatabase/serverless';
 import bcrypt from 'bcryptjs';
 
-const sql = neon(process.env.DATABASE_URL!);
+// Lazy-load SQL connection to avoid build-time errors
+function getSql() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set');
+  }
+  return neon(process.env.DATABASE_URL);
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -21,6 +27,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
+          const sql = getSql();
           const users = await sql`
             SELECT id, email, password_hash, name, business_name
             FROM users
@@ -86,6 +93,7 @@ export const authOptions: NextAuthOptions = {
       // For OAuth providers, create/update user in database
       if (account?.provider !== 'credentials' && user.email) {
         try {
+          const sql = getSql();
           const existingUsers = await sql`
             SELECT id FROM users WHERE email = ${user.email}
           `;
