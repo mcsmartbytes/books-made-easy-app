@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/utils/supabaseAdmin';
 
-// GET /api/company-settings - Get company settings
+// GET /api/company_settings - Get company settings
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const userId = searchParams.get('user_id');
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/company-settings - Create or update settings
+// POST /api/company_settings - Create or update settings
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT /api/company-settings - Update settings (alias for POST)
+// PUT /api/company_settings - Update settings (alias for POST)
 export async function PUT(request: NextRequest) {
   return POST(request);
 }
