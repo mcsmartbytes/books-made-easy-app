@@ -29,7 +29,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { user_id, ...settings } = body;
+    // Strip client-side control fields before database operations
+    const { user_id, _upsert, _onConflict, ...settings } = body;
 
     if (!user_id) {
       return NextResponse.json({ error: 'user_id is required' }, { status: 400 });
