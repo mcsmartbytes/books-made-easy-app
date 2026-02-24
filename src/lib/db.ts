@@ -1,29 +1,24 @@
-import { neon, NeonQueryFunction } from '@neondatabase/serverless';
-
-// Lazy-load the SQL client to avoid build-time errors
-let _sql: NeonQueryFunction<false, false> | null = null;
+import { getTursoClient, execSql } from './turso';
 
 export function getSql() {
-  if (!_sql) {
-    if (!process.env.DATABASE_URL) {
-      throw new Error('DATABASE_URL environment variable is not set');
-    }
-    _sql = neon(process.env.DATABASE_URL);
-  }
-  return _sql;
+  return getTursoClient();
 }
 
-// For backwards compatibility - use getSql() for new code
-export const sql = {
-  query: async (...args: Parameters<NeonQueryFunction<false, false>>) => {
-    return getSql()(...args);
-  }
-};
+export { execSql };
 
-// Helper for transactions using unpooled connection
-export function getUnpooledConnection() {
-  if (!process.env.DATABASE_URL_UNPOOLED) {
-    throw new Error('DATABASE_URL_UNPOOLED environment variable is not set');
+// Tagged template literal support for migration compatibility
+// Usage: const rows = await sql`SELECT * FROM users WHERE email = ${email}`;
+export async function sql(strings: TemplateStringsArray, ...values: unknown[]) {
+  let query = '';
+  const args: unknown[] = [];
+
+  for (let i = 0; i < strings.length; i++) {
+    query += strings[i];
+    if (i < values.length) {
+      query += '?';
+      args.push(values[i]);
+    }
   }
-  return neon(process.env.DATABASE_URL_UNPOOLED);
+
+  return execSql(query, args);
 }

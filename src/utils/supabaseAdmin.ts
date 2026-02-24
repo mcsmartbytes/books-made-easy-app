@@ -1,7 +1,8 @@
-// Re-export Neon admin client with Supabase-compatible interface
+// Re-export Turso admin client with Supabase-compatible interface
 // This allows existing code to continue working without changes
-import { neonAdmin, getNeonAdmin, getSql } from './neonAdmin';
+import { tursoAdmin, getTursoAdmin } from './tursoAdmin';
+import { execSql } from '@/lib/turso';
 
-export const supabaseAdmin = neonAdmin;
-export const getSupabaseAdmin = getNeonAdmin;
-export { getSql };
+export const supabaseAdmin = tursoAdmin;
+export const getSupabaseAdmin = getTursoAdmin;
+export { execSql as getSql };

@@ -1,19 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import { supabaseAdmin } from '@/utils/supabaseAdmin';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     let userId = body.user_id;
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
     // If no user_id provided, get first user or create demo user
     if (!userId) {
-      const { data: users } = await supabase.from('customers').select('user_id').limit(1);
+      const { data: users } = await supabaseAdmin.from('customers').select('user_id').limit(1);
       if (users && users.length > 0 && users[0].user_id) {
         userId = users[0].user_id;
       } else {
@@ -31,7 +26,7 @@ export async function POST(request: NextRequest) {
       { user_id: userId, name: 'Sunrise Retail', email: 'finance@sunriseretail.com', phone: '(555) 567-8901', company: 'Sunrise Retail Corp', address: '654 Maple Ln', city: 'Centennial', state: 'CO', zip: '80112', balance: 750.00 },
     ];
 
-    const { data: customerData } = await supabase.from('customers').insert(customers).select();
+    const { data: customerData } = await supabaseAdmin.from('customers').insert(customers).select('*');
 
     // Seed Vendors
     const vendors = [
@@ -40,19 +35,19 @@ export async function POST(request: NextRequest) {
       { user_id: userId, name: 'Tech Solutions', email: 'billing@techsolutions.com', phone: '(555) 888-2345', company: 'Tech Solutions LLC', address: '500 Tech Blvd', city: 'Austin', state: 'TX', zip: '78701', balance: 1200.00 },
     ];
 
-    await supabase.from('vendors').insert(vendors);
+    await supabaseAdmin.from('vendors').insert(vendors);
 
     // Seed Invoices
     if (customerData && customerData.length > 0) {
       const invoices = [
-        { user_id: userId, customer_id: customerData[0].id, invoice_number: 'INV-001', status: 'sent', subtotal: 2500, tax_rate: 8, tax_amount: 200, total: 2700, amount_paid: 0, balance_due: 2700, issue_date: '2024-01-15', due_date: '2024-02-15', notes: 'Construction consulting services' },
-        { user_id: userId, customer_id: customerData[1].id, invoice_number: 'INV-002', status: 'paid', subtotal: 1250, tax_rate: 8, tax_amount: 100, total: 1350, amount_paid: 1350, balance_due: 0, issue_date: '2024-01-10', due_date: '2024-02-10', notes: 'Professional services - January' },
-        { user_id: userId, customer_id: customerData[2].id, invoice_number: 'INV-003', status: 'draft', subtotal: 3500, tax_rate: 8, tax_amount: 280, total: 3780, amount_paid: 0, balance_due: 3780, issue_date: '2024-01-20', due_date: '2024-02-20', notes: 'Property management services' },
-        { user_id: userId, customer_id: customerData[3].id, invoice_number: 'INV-004', status: 'overdue', subtotal: 5000, tax_rate: 8, tax_amount: 400, total: 5400, amount_paid: 0, balance_due: 5400, issue_date: '2023-12-01', due_date: '2024-01-01', notes: 'Enterprise software license' },
-        { user_id: userId, customer_id: customerData[4].id, invoice_number: 'INV-005', status: 'sent', subtotal: 750, tax_rate: 8, tax_amount: 60, total: 810, amount_paid: 0, balance_due: 810, issue_date: '2024-01-18', due_date: '2024-02-18', notes: 'Retail consulting' },
+        { user_id: userId, customer_id: customerData[0].id, invoice_number: 'INV-001', status: 'sent', subtotal: 2500, tax_rate: 8, tax_amount: 200, total: 2700, amount_paid: 0, issue_date: '2024-01-15', due_date: '2024-02-15', notes: 'Construction consulting services' },
+        { user_id: userId, customer_id: customerData[1].id, invoice_number: 'INV-002', status: 'paid', subtotal: 1250, tax_rate: 8, tax_amount: 100, total: 1350, amount_paid: 1350, issue_date: '2024-01-10', due_date: '2024-02-10', notes: 'Professional services - January' },
+        { user_id: userId, customer_id: customerData[2].id, invoice_number: 'INV-003', status: 'draft', subtotal: 3500, tax_rate: 8, tax_amount: 280, total: 3780, amount_paid: 0, issue_date: '2024-01-20', due_date: '2024-02-20', notes: 'Property management services' },
+        { user_id: userId, customer_id: customerData[3].id, invoice_number: 'INV-004', status: 'overdue', subtotal: 5000, tax_rate: 8, tax_amount: 400, total: 5400, amount_paid: 0, issue_date: '2023-12-01', due_date: '2024-01-01', notes: 'Enterprise software license' },
+        { user_id: userId, customer_id: customerData[4].id, invoice_number: 'INV-005', status: 'sent', subtotal: 750, tax_rate: 8, tax_amount: 60, total: 810, amount_paid: 0, issue_date: '2024-01-18', due_date: '2024-02-18', notes: 'Retail consulting' },
       ];
 
-      const { data: invoiceData } = await supabase.from('invoices').insert(invoices).select();
+      const { data: invoiceData } = await supabaseAdmin.from('invoices').insert(invoices).select('*');
 
       // Seed Invoice Items
       if (invoiceData) {
@@ -65,18 +60,18 @@ export async function POST(request: NextRequest) {
           { invoice_id: invoiceData[4].id, description: 'Retail consulting - 3 hours', quantity: 3, rate: 250, amount: 750 },
         ];
 
-        await supabase.from('invoice_items').insert(invoiceItems);
+        await supabaseAdmin.from('invoice_items').insert(invoiceItems);
       }
     }
 
     // Seed Jobs
     const jobs = [
-      { user_id: userId, name: 'Office Renovation Project', description: 'Complete office renovation for ABC Construction', status: 'in_progress', estimated_revenue: 15000, actual_revenue: 5000, estimated_cost: 8000, actual_cost: 3500 },
-      { user_id: userId, name: 'Website Redesign', description: 'Full website redesign for Smith & Associates', status: 'completed', estimated_revenue: 8000, actual_revenue: 8500, estimated_cost: 4000, actual_cost: 3800 },
-      { user_id: userId, name: 'Property Assessment', description: 'Full property assessment for Metro Properties', status: 'pending', estimated_revenue: 3500, actual_revenue: 0, estimated_cost: 1500, actual_cost: 0 },
+      { user_id: userId, job_number: 'JOB-001', name: 'Office Renovation Project', description: 'Complete office renovation for ABC Construction', status: 'in_progress', estimated_revenue: 15000, actual_revenue: 5000, estimated_cost: 8000, actual_cost: 3500 },
+      { user_id: userId, job_number: 'JOB-002', name: 'Website Redesign', description: 'Full website redesign for Smith & Associates', status: 'completed', estimated_revenue: 8000, actual_revenue: 8500, estimated_cost: 4000, actual_cost: 3800 },
+      { user_id: userId, job_number: 'JOB-003', name: 'Property Assessment', description: 'Full property assessment for Metro Properties', status: 'pending', estimated_revenue: 3500, actual_revenue: 0, estimated_cost: 1500, actual_cost: 0 },
     ];
 
-    await supabase.from('jobs').insert(jobs);
+    await supabaseAdmin.from('jobs').insert(jobs);
 
     return NextResponse.json({
       success: true,
