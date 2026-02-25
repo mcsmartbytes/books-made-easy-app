@@ -1,20 +1,11 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
-import { neon } from '@neondatabase/serverless';
 import bcrypt from 'bcryptjs';
-
-// Lazy-load SQL connection to avoid build-time errors
-function getSql() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL is not set');
-  }
-  return neon(process.env.DATABASE_URL);
-}
+import { sql } from './db';
 
 export const authOptions: NextAuthOptions = {
   providers: [
-    // Email/Password login
     CredentialsProvider({
       name: 'credentials',
       credentials: {
@@ -27,7 +18,6 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          const sql = getSql();
           const users = await sql`
             SELECT id, email, password_hash, name, business_name
             FROM users
@@ -39,16 +29,16 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
 
-          const isValid = await bcrypt.compare(credentials.password, user.password_hash);
+          const isValid = await bcrypt.compare(credentials.password, String(user.password_hash));
           if (!isValid) {
             return null;
           }
 
           return {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            businessName: user.business_name,
+            id: String(user.id),
+            email: String(user.email),
+            name: user.name ? String(user.name) : null,
+            businessName: user.business_name ? String(user.business_name) : null,
           };
         } catch (error) {
           console.error('Auth error:', error);
@@ -56,7 +46,6 @@ export const authOptions: NextAuthOptions = {
         }
       },
     }),
-    // Google OAuth (optional - configure in Google Cloud Console)
     ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
       ? [
           GoogleProvider({
@@ -90,18 +79,17 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
     async signIn({ user, account }) {
-      // For OAuth providers, create/update user in database
       if (account?.provider !== 'credentials' && user.email) {
         try {
-          const sql = getSql();
           const existingUsers = await sql`
             SELECT id FROM users WHERE email = ${user.email}
           `;
 
           if (existingUsers.length === 0) {
+            const id = crypto.randomUUID();
             await sql`
-              INSERT INTO users (email, name, created_at)
-              VALUES (${user.email}, ${user.name}, NOW())
+              INSERT INTO users (id, email, name, created_at)
+              VALUES (${id}, ${user.email}, ${user.name}, ${new Date().toISOString()})
             `;
           }
         } catch (error) {

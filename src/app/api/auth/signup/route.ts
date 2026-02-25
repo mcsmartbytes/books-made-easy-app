@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
 import bcrypt from 'bcryptjs';
-
-// Lazy-load SQL connection to avoid build-time errors
-function getSql() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL is not set');
-  }
-  return neon(process.env.DATABASE_URL);
-}
+import { sql } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,9 +13,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const sql = getSql();
-
-    // Check if user already exists
     const existingUsers = await sql`
       SELECT id FROM users WHERE email = ${email}
     `;
@@ -35,13 +24,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-    // Create user
     const newUsers = await sql`
-      INSERT INTO users (email, password_hash, name, business_name)
-      VALUES (${email}, ${passwordHash}, ${name || null}, ${businessName || null})
+      INSERT INTO users (id, email, password_hash, name, business_name, created_at, updated_at)
+      VALUES (${id}, ${email}, ${passwordHash}, ${name || null}, ${businessName || null}, ${now}, ${now})
       RETURNING id, email, name, business_name
     `;
 
