@@ -7,6 +7,8 @@ import {
   CategorySpending,
 } from '@/lib/analytics';
 
+export const dynamic = 'force-dynamic';
+
 // Helper function to group expenses by category
 function groupByCategory(expenses: any[]): CategorySpending[] {
   const grouped: Record<string, CategorySpending> = {};

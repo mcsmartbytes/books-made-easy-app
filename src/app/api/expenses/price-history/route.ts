@@ -14,6 +14,8 @@ import {
   SavingsOpportunity,
 } from '@/lib/priceTracking';
 
+export const dynamic = 'force-dynamic';
+
 // GET - Fetch price history and trends
 export async function GET(request: NextRequest) {
   try {

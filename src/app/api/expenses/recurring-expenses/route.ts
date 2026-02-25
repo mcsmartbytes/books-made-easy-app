@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/utils/supabaseAdmin';
 
+export const dynamic = 'force-dynamic';
+
 // GET - fetch all recurring expenses for a user
 export async function GET(request: NextRequest) {
   try {

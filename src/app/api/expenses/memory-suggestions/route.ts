@@ -11,6 +11,8 @@ import {
   MemorySuggestion,
 } from '@/lib/moneyMemory';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/memory-suggestions?user_id=xxx&items=milk,bread&vendor=Whole+Foods
 // Returns memory suggestions for specific items
 export async function GET(request: NextRequest) {

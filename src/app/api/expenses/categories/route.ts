@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/utils/supabaseAdmin';
 
+export const dynamic = 'force-dynamic';
+
 // GET - fetch all categories
 export async function GET() {
   try {

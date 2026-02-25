@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/utils/supabaseAdmin';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/dashboard - Get dashboard stats
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;

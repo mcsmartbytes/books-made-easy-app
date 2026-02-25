@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/utils/supabaseAdmin';
 
+export const dynamic = 'force-dynamic';
+
 // Pattern matching logic for item names
 function matchesPattern(
   itemName: string,

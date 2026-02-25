@@ -11,6 +11,8 @@ import {
   Budget,
 } from '@/lib/forecasting';
 
+export const dynamic = 'force-dynamic';
+
 // GET - generate forecast and predictive alerts for a user
 export async function GET(request: NextRequest) {
   try {

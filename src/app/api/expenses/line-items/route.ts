@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/utils/supabaseAdmin';
 import { normalizeItemName, normalizeVendor } from '@/lib/lineItems';
 
+export const dynamic = 'force-dynamic';
+
 // GET - Fetch line items for an expense or user
 export async function GET(request: NextRequest) {
   try {

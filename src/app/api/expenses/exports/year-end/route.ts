@@ -11,6 +11,8 @@ import {
   getQuarterLabel,
 } from '@/lib/exports';
 
+export const dynamic = 'force-dynamic';
+
 // GET - generate year-end summary
 export async function GET(request: NextRequest) {
   try {

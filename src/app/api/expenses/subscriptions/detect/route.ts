@@ -7,6 +7,8 @@ import {
   findDuplicates,
 } from '@/lib/subscriptionDetection';
 
+export const dynamic = 'force-dynamic';
+
 // POST - Run subscription detection on user's expenses
 export async function POST(request: NextRequest) {
   try {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/utils/supabaseAdmin';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/invoices - List all invoices
 // GET /api/invoices?id=xxx - Get single invoice with items
 export async function GET(request: NextRequest) {

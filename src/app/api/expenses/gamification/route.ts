@@ -9,6 +9,8 @@ import {
   XP_AWARDS,
 } from '@/lib/gamification';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/gamification?user_id=xxx
 // Returns current gamification state, stats, and achievements
 export async function GET(request: NextRequest) {
