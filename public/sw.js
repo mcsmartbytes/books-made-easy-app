@@ -1,6 +1,6 @@
-const CACHE_NAME = 'books-made-easy-v1';
-const STATIC_CACHE = 'books-static-v1';
-const DYNAMIC_CACHE = 'books-dynamic-v1';
+const CACHE_NAME = 'books-made-easy-v2';
+const STATIC_CACHE = 'books-static-v2';
+const DYNAMIC_CACHE = 'books-dynamic-v2';
 
 // Assets to cache immediately on install
 const STATIC_ASSETS = [
