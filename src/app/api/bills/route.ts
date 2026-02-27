@@ -47,6 +47,30 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query.order('bill_date', { ascending: false });
 
     if (error) throw error;
+
+    // Auto-detect overdue bills
+    const today = new Date().toISOString().split('T')[0];
+    const bills = (data || []) as { id: string; status: string; due_date: string }[];
+    const overdueIds: string[] = [];
+    for (const bill of bills) {
+      if ((bill.status === 'unpaid' || bill.status === 'partial') && bill.due_date < today) {
+        bill.status = 'overdue';
+        overdueIds.push(bill.id);
+      }
+    }
+
+    // Batch-update overdue bills in the background
+    if (overdueIds.length > 0) {
+      for (const oid of overdueIds) {
+        supabaseAdmin
+          .from('bills')
+          .update({ status: 'overdue' })
+          .eq('id', oid)
+          .eq('user_id', userId)
+          .then(() => {});
+      }
+    }
+
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching bills:', error);

@@ -3,13 +3,12 @@ import { supabaseAdmin } from '@/utils/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/accounts - List all accounts (chart of accounts)
-// GET /api/accounts?type=expense - Filter by type
+// GET /api/bank-accounts - List all bank accounts
+// GET /api/bank-accounts?id=xxx - Get single bank account
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const userId = searchParams.get('user_id');
   const accountId = searchParams.get('id');
-  const accountType = searchParams.get('type');
 
   if (!userId) {
     return NextResponse.json({ error: 'user_id is required' }, { status: 400 });
@@ -18,8 +17,8 @@ export async function GET(request: NextRequest) {
   try {
     if (accountId) {
       const { data, error } = await supabaseAdmin
-        .from('accounts')
-        .select('*')
+        .from('bank_accounts')
+        .select('*, accounts(id, name, code, type)')
         .eq('id', accountId)
         .eq('user_id', userId)
         .single();
@@ -28,71 +27,55 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data });
     }
 
-    let query = supabaseAdmin
-      .from('accounts')
-      .select('*')
+    const { data, error } = await supabaseAdmin
+      .from('bank_accounts')
+      .select('*, accounts(id, name, code, type)')
       .eq('user_id', userId)
-      .eq('is_active', true);
-
-    if (accountType) {
-      query = query.eq('type', accountType);
-    }
-
-    const { data, error } = await query.order('code');
+      .order('name', { ascending: true });
 
     if (error) throw error;
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    console.error('Error fetching accounts:', error);
-    return NextResponse.json({ error: 'Failed to fetch accounts' }, { status: 500 });
+    console.error('Error fetching bank accounts:', error);
+    return NextResponse.json({ error: 'Failed to fetch bank accounts' }, { status: 500 });
   }
 }
 
-// POST /api/accounts - Create account
+// POST /api/bank-accounts - Create bank account
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { user_id, code, name, type, subtype, description, normal_balance, help_text } = body;
+    const { user_id, name, institution, account_type, account_number_last4, routing_number_last4, current_balance, account_id } = body;
 
-    if (!user_id || !code || !name || !type) {
-      return NextResponse.json({ error: 'user_id, code, name, and type are required' }, { status: 400 });
+    if (!user_id || !name) {
+      return NextResponse.json({ error: 'user_id and name are required' }, { status: 400 });
     }
-
-    const validTypes = ['asset', 'liability', 'equity', 'income', 'expense'];
-    if (!validTypes.includes(type)) {
-      return NextResponse.json({ error: 'Invalid account type' }, { status: 400 });
-    }
-
-    // Auto-set normal_balance based on type if not provided
-    const autoNormalBalance = ['asset', 'expense'].includes(type) ? 'debit' : 'credit';
 
     const { data, error } = await supabaseAdmin
-      .from('accounts')
+      .from('bank_accounts')
       .insert({
         user_id,
-        code,
         name,
-        type,
-        subtype,
-        description,
-        normal_balance: normal_balance || autoNormalBalance,
-        help_text: help_text || null,
+        institution: institution || null,
+        account_type: account_type || 'checking',
+        account_number_last4: account_number_last4 || null,
+        routing_number_last4: routing_number_last4 || null,
+        current_balance: current_balance || 0,
+        available_balance: current_balance || 0,
+        account_id: account_id || null,
       })
       .select()
       .single();
 
     if (error) throw error;
     return NextResponse.json({ success: true, data }, { status: 201 });
-  } catch (error: any) {
-    console.error('Error creating account:', error);
-    if (error.code === '23505') {
-      return NextResponse.json({ error: 'Account code already exists' }, { status: 400 });
-    }
-    return NextResponse.json({ error: 'Failed to create account' }, { status: 500 });
+  } catch (error) {
+    console.error('Error creating bank account:', error);
+    return NextResponse.json({ error: 'Failed to create bank account' }, { status: 500 });
   }
 }
 
-// PUT /api/accounts - Update account
+// PUT /api/bank-accounts - Update bank account
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
@@ -103,7 +86,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const { data, error } = await supabaseAdmin
-      .from('accounts')
+      .from('bank_accounts')
       .update(updates)
       .eq('id', id)
       .eq('user_id', user_id)
@@ -113,12 +96,12 @@ export async function PUT(request: NextRequest) {
     if (error) throw error;
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    console.error('Error updating account:', error);
-    return NextResponse.json({ error: 'Failed to update account' }, { status: 500 });
+    console.error('Error updating bank account:', error);
+    return NextResponse.json({ error: 'Failed to update bank account' }, { status: 500 });
   }
 }
 
-// DELETE /api/accounts?id=xxx&user_id=xxx
+// DELETE /api/bank-accounts?id=xxx&user_id=xxx
 export async function DELETE(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const id = searchParams.get('id');
@@ -129,18 +112,16 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    // Soft delete
     const { error } = await supabaseAdmin
-      .from('accounts')
-      .update({ is_active: false })
+      .from('bank_accounts')
+      .delete()
       .eq('id', id)
       .eq('user_id', userId);
 
     if (error) throw error;
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error deleting account:', error);
-    return NextResponse.json({ error: 'Failed to delete account' }, { status: 500 });
+    console.error('Error deleting bank account:', error);
+    return NextResponse.json({ error: 'Failed to delete bank account' }, { status: 500 });
   }
 }
-

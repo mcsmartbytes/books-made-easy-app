@@ -1,5 +1,5 @@
 {
-  "name": "Books Made Easy",
+  "name": "Books Your Way",
   "short_name": "Books",
   "description": "Professional accounting software for small businesses. Manage invoices, bills, customers, and vendors with ease.",
   "start_url": "/dashboard",
@@ -8,7 +8,7 @@
   "theme_color": "#3b82f6",
   "orientation": "portrait-primary",
   "scope": "/",
-  "id": "books-made-easy-app",
+  "id": "books-your-way",
   "icons": [
     {
       "src": "/icons/icon-72x72.png",
