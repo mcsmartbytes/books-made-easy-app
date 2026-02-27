@@ -2,18 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/utils/supabase';
+import { getSession } from 'next-auth/react';
 
 interface Bill {
   id: string;
   bill_number: string;
-  vendor_name: string;
-  vendor_email: string;
-  amount: number;
-  status: 'draft' | 'unpaid' | 'paid' | 'overdue';
+  vendor_id: string;
+  total: number;
+  amount_paid: number;
+  status: 'draft' | 'unpaid' | 'paid' | 'overdue' | 'partial';
   bill_date: string;
   due_date: string;
   category: string;
+  vendors?: { id: string; name: string; email: string; company: string } | null;
 }
 
 export default function BillsPage() {
@@ -27,54 +28,67 @@ export default function BillsPage() {
   }, []);
 
   const loadBills = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    const session = await getSession();
+    const userId = (session?.user as { id?: string })?.id;
+    if (!userId) return;
 
-    // Mock data
-    const mockBills: Bill[] = [
-      { id: '1', bill_number: 'BILL-001', vendor_name: 'Office Supplies Co', vendor_email: 'orders@officesupplies.com', amount: 450.00, status: 'unpaid', bill_date: '2024-12-01', due_date: '2024-12-15', category: 'Office Expenses' },
-      { id: '2', bill_number: 'BILL-002', vendor_name: 'Cloud Services Inc', vendor_email: 'billing@cloudservices.com', amount: 1200.00, status: 'unpaid', bill_date: '2024-11-25', due_date: '2024-12-10', category: 'Software' },
-      { id: '3', bill_number: 'BILL-003', vendor_name: 'Marketing Agency Pro', vendor_email: 'accounts@marketingpro.com', amount: 5500.00, status: 'overdue', bill_date: '2024-11-01', due_date: '2024-11-15', category: 'Marketing' },
-      { id: '4', bill_number: 'BILL-004', vendor_name: 'Insurance Partners', vendor_email: 'premiums@insurancepartners.com', amount: 2800.00, status: 'paid', bill_date: '2024-11-20', due_date: '2024-12-05', category: 'Insurance' },
-      { id: '5', bill_number: 'BILL-005', vendor_name: 'Utility Company', vendor_email: 'business@utilityco.com', amount: 350.00, status: 'draft', bill_date: '2024-12-02', due_date: '2024-12-20', category: 'Utilities' },
-    ];
-    setBills(mockBills);
+    const res = await fetch(`/api/bills?user_id=${userId}`);
+    const result = await res.json();
+    if (result.success) {
+      setBills(result.data);
+    }
     setLoading(false);
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this bill? This cannot be undone.')) return;
+
+    const session = await getSession();
+    const userId = (session?.user as { id?: string })?.id;
+    if (!userId) return;
+
+    const res = await fetch(`/api/bills?id=${id}&user_id=${userId}`, { method: 'DELETE' });
+    const result = await res.json();
+    if (result.success) {
+      loadBills();
+    }
   };
 
-  const getStatusBadge = (status: string) => {
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  };
+
+  const getStatusDisplay = (bill: Bill) => {
+    // Show "Partial" if unpaid but has some payments
+    const effectiveStatus = (bill.status === 'unpaid' && (bill.amount_paid || 0) > 0)
+      ? 'partial' : bill.status;
     const styles: Record<string, string> = {
       draft: 'bg-gray-100 text-gray-700',
       unpaid: 'bg-orange-100 text-orange-700',
       paid: 'bg-green-100 text-green-700',
       overdue: 'bg-red-100 text-red-700',
+      partial: 'bg-yellow-100 text-yellow-700',
     };
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status]}`}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[effectiveStatus] || styles.draft}`}>
+        {effectiveStatus.charAt(0).toUpperCase() + effectiveStatus.slice(1)}
       </span>
     );
   };
 
   const filteredBills = bills.filter(bill => {
+    const vendorName = bill.vendors?.name || '';
     const matchesSearch = bill.bill_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      bill.vendor_name.toLowerCase().includes(searchTerm.toLowerCase());
+      vendorName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || bill.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const totals = {
-    all: bills.reduce((sum, b) => sum + b.amount, 0),
-    unpaid: bills.filter(b => b.status === 'unpaid').reduce((sum, b) => sum + b.amount, 0),
-    overdue: bills.filter(b => b.status === 'overdue').reduce((sum, b) => sum + b.amount, 0),
-    paid: bills.filter(b => b.status === 'paid').reduce((sum, b) => sum + b.amount, 0),
+    all: bills.reduce((sum, b) => sum + b.total, 0),
+    unpaid: bills.filter(b => b.status === 'unpaid').reduce((sum, b) => sum + b.total - (b.amount_paid || 0), 0),
+    overdue: bills.filter(b => b.status === 'overdue').reduce((sum, b) => sum + b.total - (b.amount_paid || 0), 0),
+    paid: bills.filter(b => b.status === 'paid').reduce((sum, b) => sum + b.total, 0),
   };
 
   if (loading) {
@@ -163,10 +177,10 @@ export default function BillsPage() {
                 <th>Bill #</th>
                 <th>Vendor</th>
                 <th>Category</th>
-                <th>Bill Date</th>
                 <th>Due Date</th>
                 <th>Status</th>
-                <th className="text-right">Amount</th>
+                <th className="text-right">Balance Due</th>
+                <th className="text-right">Total</th>
                 <th className="text-right">Actions</th>
               </tr>
             </thead>
@@ -174,70 +188,90 @@ export default function BillsPage() {
               {filteredBills.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="text-center py-8 text-corporate-gray">
-                    No bills found
+                    {bills.length === 0 ? (
+                      <div>
+                        <p>No bills yet.</p>
+                        <Link href="/dashboard/bills/new" className="text-primary-600 hover:text-primary-700 mt-1 inline-block">
+                          Create your first bill
+                        </Link>
+                      </div>
+                    ) : (
+                      'No bills match your search'
+                    )}
                   </td>
                 </tr>
               ) : (
-                filteredBills.map((bill) => (
-                  <tr key={bill.id}>
-                    <td>
-                      <Link href={`/dashboard/bills/${bill.id}`} className="font-medium text-primary-600 hover:text-primary-700">
-                        {bill.bill_number}
-                      </Link>
-                    </td>
-                    <td>
-                      <p className="font-medium text-corporate-dark">{bill.vendor_name}</p>
-                      <p className="text-xs text-corporate-gray">{bill.vendor_email}</p>
-                    </td>
-                    <td>
-                      <span className="px-2 py-1 bg-gray-100 rounded text-xs text-corporate-slate">
-                        {bill.category}
-                      </span>
-                    </td>
-                    <td className="text-corporate-slate">
-                      {new Date(bill.bill_date).toLocaleDateString()}
-                    </td>
-                    <td className="text-corporate-slate">
-                      {new Date(bill.due_date).toLocaleDateString()}
-                    </td>
-                    <td>{getStatusBadge(bill.status)}</td>
-                    <td className="text-right font-semibold text-corporate-dark">
-                      {formatCurrency(bill.amount)}
-                    </td>
-                    <td className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Link
-                          href={`/dashboard/bills/${bill.id}`}
-                          className="p-2 text-corporate-gray hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                          title="View"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
+                filteredBills.map((bill) => {
+                  const balanceDue = bill.total - (bill.amount_paid || 0);
+                  return (
+                    <tr key={bill.id}>
+                      <td>
+                        <Link href={`/dashboard/bills/${bill.id}`} className="font-medium text-primary-600 hover:text-primary-700">
+                          {bill.bill_number}
                         </Link>
-                        {(bill.status === 'unpaid' || bill.status === 'overdue') && (
-                          <button
-                            className="p-2 text-corporate-gray hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                            title="Pay Bill"
+                      </td>
+                      <td>
+                        <p className="font-medium text-corporate-dark">{bill.vendors?.name || '-'}</p>
+                        {bill.vendors?.email && (
+                          <p className="text-xs text-corporate-gray">{bill.vendors.email}</p>
+                        )}
+                      </td>
+                      <td>
+                        {bill.category ? (
+                          <span className="px-2 py-1 bg-gray-100 rounded text-xs text-corporate-slate">
+                            {bill.category}
+                          </span>
+                        ) : '-'}
+                      </td>
+                      <td className="text-corporate-slate">
+                        {new Date(bill.due_date).toLocaleDateString()}
+                      </td>
+                      <td>{getStatusDisplay(bill)}</td>
+                      <td className="text-right font-semibold text-corporate-dark">
+                        {bill.status === 'paid' ? '-' : formatCurrency(balanceDue)}
+                      </td>
+                      <td className="text-right text-corporate-slate">
+                        {formatCurrency(bill.total)}
+                      </td>
+                      <td className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Link
+                            href={`/dashboard/bills/${bill.id}`}
+                            className="p-2 text-corporate-gray hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                            title="View"
                           >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                             </svg>
-                          </button>
-                        )}
-                        <button
-                          className="p-2 text-corporate-gray hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          </Link>
+                          {(bill.status === 'unpaid' || bill.status === 'overdue' || bill.status === 'partial') && (
+                            <Link
+                              href={`/dashboard/payments/pay?bill=${bill.id}`}
+                              className="p-2 text-corporate-gray hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                              title="Pay Bill"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                              </svg>
+                            </Link>
+                          )}
+                          {bill.status !== 'paid' && (
+                            <button
+                              onClick={() => handleDelete(bill.id)}
+                              className="p-2 text-corporate-gray hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

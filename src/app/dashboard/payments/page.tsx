@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/utils/supabase';
+import { getSession } from 'next-auth/react';
 
 interface Payment {
   id: string;
@@ -14,9 +14,8 @@ interface Payment {
   reference: string;
   invoice_id: string | null;
   bill_id: string | null;
-  customer_name: string | null;
-  vendor_name: string | null;
-  document_number: string | null;
+  invoices?: { id: string; invoice_number: string } | null;
+  bills?: { id: string; bill_number: string } | null;
 }
 
 export default function PaymentsPage() {
@@ -30,36 +29,20 @@ export default function PaymentsPage() {
   }, []);
 
   const loadPayments = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    const session = await getSession();
+    const userId = (session?.user as { id?: string })?.id;
+    if (!userId) return;
 
-    const { data: paymentsData, error } = await supabase
-      .from('payments')
-      .select(`
-        *,
-        invoices (invoice_number, customers (name)),
-        bills (bill_number, vendors (name))
-      `)
-      .eq('user_id', session.user.id)
-      .order('payment_date', { ascending: false });
-
-    if (!error && paymentsData) {
-      const mapped = paymentsData.map((p: any) => ({
-        ...p,
-        customer_name: p.invoices?.customers?.name || null,
-        vendor_name: p.bills?.vendors?.name || null,
-        document_number: p.invoices?.invoice_number || p.bills?.bill_number || null,
-      }));
-      setPayments(mapped);
+    const res = await fetch(`/api/payments?user_id=${userId}`);
+    const result = await res.json();
+    if (result.success) {
+      setPayments(result.data || []);
     }
     setLoading(false);
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
   };
 
   const formatDate = (date: string) => {
@@ -89,11 +72,10 @@ export default function PaymentsPage() {
   };
 
   const filteredPayments = payments.filter(payment => {
+    const docNumber = payment.invoices?.invoice_number || payment.bills?.bill_number || '';
     const matchesSearch =
       payment.payment_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.vendor_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.document_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      docNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       payment.reference?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = typeFilter === 'all' || payment.type === typeFilter;
     return matchesSearch && matchesType;
@@ -192,10 +174,10 @@ export default function PaymentsPage() {
               <tr>
                 <th>Payment #</th>
                 <th>Type</th>
-                <th>Customer/Vendor</th>
                 <th>For</th>
                 <th>Date</th>
                 <th>Method</th>
+                <th>Reference</th>
                 <th className="text-right">Amount</th>
               </tr>
             </thead>
@@ -221,40 +203,43 @@ export default function PaymentsPage() {
                   </td>
                 </tr>
               ) : (
-                filteredPayments.map((payment) => (
-                  <tr key={payment.id}>
-                    <td className="font-medium text-corporate-dark">{payment.payment_number}</td>
-                    <td>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        payment.type === 'received' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                filteredPayments.map((payment) => {
+                  const docNumber = payment.invoices?.invoice_number || payment.bills?.bill_number;
+                  const docLink = payment.invoice_id
+                    ? `/dashboard/invoices/${payment.invoice_id}`
+                    : payment.bill_id
+                    ? `/dashboard/bills/${payment.bill_id}`
+                    : null;
+                  return (
+                    <tr key={payment.id}>
+                      <td className="font-medium text-corporate-dark">{payment.payment_number}</td>
+                      <td>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          payment.type === 'received' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {payment.type === 'received' ? 'Received' : 'Made'}
+                        </span>
+                      </td>
+                      <td>
+                        {docNumber && docLink ? (
+                          <Link href={docLink} className="text-primary-600 hover:text-primary-700">
+                            {docNumber}
+                          </Link>
+                        ) : (
+                          <span className="text-corporate-gray">-</span>
+                        )}
+                      </td>
+                      <td className="text-corporate-slate">{formatDate(payment.payment_date)}</td>
+                      <td>{getPaymentMethodBadge(payment.payment_method)}</td>
+                      <td className="text-corporate-slate text-sm">{payment.reference || '-'}</td>
+                      <td className={`text-right font-semibold ${
+                        payment.type === 'received' ? 'text-green-600' : 'text-red-600'
                       }`}>
-                        {payment.type === 'received' ? 'Received' : 'Made'}
-                      </span>
-                    </td>
-                    <td className="text-corporate-slate">
-                      {payment.type === 'received' ? payment.customer_name : payment.vendor_name}
-                    </td>
-                    <td>
-                      {payment.document_number ? (
-                        <Link
-                          href={`/dashboard/${payment.type === 'received' ? 'invoices' : 'bills'}/${payment.invoice_id || payment.bill_id}`}
-                          className="text-primary-600 hover:text-primary-700"
-                        >
-                          {payment.document_number}
-                        </Link>
-                      ) : (
-                        <span className="text-corporate-gray">—</span>
-                      )}
-                    </td>
-                    <td className="text-corporate-slate">{formatDate(payment.payment_date)}</td>
-                    <td>{getPaymentMethodBadge(payment.payment_method)}</td>
-                    <td className={`text-right font-semibold ${
-                      payment.type === 'received' ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {payment.type === 'received' ? '+' : '-'}{formatCurrency(payment.amount)}
-                    </td>
-                  </tr>
-                ))
+                        {payment.type === 'received' ? '+' : '-'}{formatCurrency(payment.amount)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

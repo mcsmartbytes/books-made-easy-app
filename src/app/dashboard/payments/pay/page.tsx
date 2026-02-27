@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/utils/supabase';
+import { getSession } from 'next-auth/react';
 
 interface Vendor {
   id: string;
@@ -19,22 +19,24 @@ interface Bill {
   amount_paid: number;
   status: string;
   due_date: string;
+  vendors?: { id: string; name: string; email: string } | null;
 }
 
 export default function PayBillPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
   const [vendorSearch, setVendorSearch] = useState('');
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
+  const [error, setError] = useState('');
   const vendorRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState({
-    payment_number: `PMT-${String(Date.now()).slice(-6)}`,
     payment_date: new Date().toISOString().split('T')[0],
     amount: 0,
     payment_method: 'bank_transfer',
@@ -66,51 +68,53 @@ export default function PayBillPage() {
   }, [selectedVendor]);
 
   const loadData = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    const session = await getSession();
+    const userId = (session?.user as { id?: string })?.id;
+    if (!userId) return;
 
-    const { data: vendorsData } = await supabase
-      .from('vendors')
-      .select('id, name, email')
-      .eq('user_id', session.user.id)
-      .order('name');
-
-    setVendors(vendorsData || []);
+    const res = await fetch(`/api/vendors?user_id=${userId}`);
+    const result = await res.json();
+    if (result.success) {
+      setVendors(result.data || []);
+    }
 
     // Check for pre-selected bill
     const billId = searchParams.get('bill');
     if (billId) {
-      const { data: bill } = await supabase
-        .from('bills')
-        .select(`*, vendors (id, name, email)`)
-        .eq('id', billId)
-        .single();
+      const billRes = await fetch(`/api/bills?id=${billId}&user_id=${userId}`);
+      const billResult = await billRes.json();
 
-      if (bill && bill.vendors) {
-        setSelectedVendor(bill.vendors);
-        setVendorSearch(bill.vendors.name);
-        setSelectedBill(bill);
-        setFormData(prev => ({
-          ...prev,
-          amount: bill.total - (bill.amount_paid || 0)
-        }));
+      if (billResult.success && billResult.data) {
+        const bill = billResult.data;
+        if (bill.vendors) {
+          setSelectedVendor(bill.vendors);
+          setVendorSearch(bill.vendors.name);
+          setSelectedBill(bill);
+          setFormData(prev => ({
+            ...prev,
+            amount: bill.total - (bill.amount_paid || 0),
+          }));
+        }
       }
     }
+
+    setDataLoading(false);
   };
 
   const loadVendorBills = async (vendorId: string) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    const session = await getSession();
+    const userId = (session?.user as { id?: string })?.id;
+    if (!userId) return;
 
-    const { data: billsData } = await supabase
-      .from('bills')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .eq('vendor_id', vendorId)
-      .in('status', ['unpaid', 'overdue', 'partial'])
-      .order('due_date');
-
-    setBills(billsData || []);
+    const res = await fetch(`/api/bills?user_id=${userId}&vendor_id=${vendorId}`);
+    const result = await res.json();
+    if (result.success) {
+      // Only show unpaid/overdue bills (excludes paid and draft)
+      const unpaid = (result.data || []).filter(
+        (b: Bill) => b.status === 'unpaid' || b.status === 'overdue'
+      );
+      setBills(unpaid);
+    }
   };
 
   const selectVendor = (vendor: Vendor) => {
@@ -139,70 +143,74 @@ export default function PayBillPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVendor || formData.amount <= 0) {
-      alert('Please select a vendor and enter a valid amount');
+      setError('Please select a vendor and enter a valid amount.');
       return;
     }
     setLoading(true);
+    setError('');
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    const session = await getSession();
+    const userId = (session?.user as { id?: string })?.id;
+    if (!userId) return;
 
-    // Create payment record
-    const { error: paymentError } = await supabase
-      .from('payments')
-      .insert({
-        user_id: session.user.id,
-        payment_number: formData.payment_number,
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
         type: 'made',
         bill_id: selectedBill?.id || null,
         amount: formData.amount,
         payment_date: formData.payment_date,
         payment_method: formData.payment_method,
-        reference: formData.reference,
-        notes: formData.notes,
-      });
+        reference: formData.reference || null,
+        notes: formData.notes || null,
+      }),
+    });
 
-    if (paymentError) {
-      console.error('Error creating payment:', paymentError);
-      alert('Error creating payment: ' + paymentError.message);
-      setLoading(false);
-      return;
+    const result = await res.json();
+    if (result.success) {
+      router.push('/dashboard/payments');
+    } else {
+      setError(result.error || 'Failed to record payment');
     }
-
-    // Update bill if one was selected
-    if (selectedBill) {
-      const newAmountPaid = (selectedBill.amount_paid || 0) + formData.amount;
-      const newStatus = newAmountPaid >= selectedBill.total ? 'paid' : 'partial';
-
-      await supabase
-        .from('bills')
-        .update({
-          amount_paid: newAmountPaid,
-          status: newStatus,
-        })
-        .eq('id', selectedBill.id);
-    }
-
-    router.push('/dashboard/payments');
+    setLoading(false);
   };
+
+  if (dataLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
+          <div className="flex items-center gap-2 text-sm text-corporate-gray mb-1">
+            <Link href="/dashboard/payments" className="hover:text-primary-600">Payments</Link>
+            <span>/</span>
+            <span>Pay Bill</span>
+          </div>
           <h1 className="text-2xl font-bold text-corporate-dark">Pay Bill</h1>
           <p className="text-corporate-gray mt-1">Record a payment to a vendor</p>
         </div>
-        <Link href="/dashboard/payments" className="btn-secondary">Cancel</Link>
+        <Link href="/dashboard/payments" className="px-4 py-2 border border-gray-300 rounded-lg text-corporate-slate hover:bg-gray-50">Cancel</Link>
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">{error}</div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Vendor Selection */}
         <div className="card">
           <h2 className="text-lg font-semibold text-corporate-dark mb-4">Vendor</h2>
           <div ref={vendorRef} className="relative">
-            <label className="label">Select Vendor *</label>
+            <label className="block text-sm font-medium text-corporate-dark mb-1">Select Vendor *</label>
             <div className="relative">
               <input
                 type="text"
@@ -331,16 +339,7 @@ export default function PayBillPage() {
           <h2 className="text-lg font-semibold text-corporate-dark mb-4">Payment Details</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="label">Payment Number</label>
-              <input
-                type="text"
-                value={formData.payment_number}
-                onChange={(e) => setFormData({ ...formData, payment_number: e.target.value })}
-                className="input-field"
-              />
-            </div>
-            <div>
-              <label className="label">Payment Date *</label>
+              <label className="block text-sm font-medium text-corporate-dark mb-1">Payment Date *</label>
               <input
                 type="date"
                 value={formData.payment_date}
@@ -350,7 +349,7 @@ export default function PayBillPage() {
               />
             </div>
             <div>
-              <label className="label">Amount *</label>
+              <label className="block text-sm font-medium text-corporate-dark mb-1">Amount *</label>
               <input
                 type="number"
                 min="0.01"
@@ -363,7 +362,7 @@ export default function PayBillPage() {
               />
             </div>
             <div>
-              <label className="label">Payment Method</label>
+              <label className="block text-sm font-medium text-corporate-dark mb-1">Payment Method</label>
               <select
                 value={formData.payment_method}
                 onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
@@ -376,18 +375,18 @@ export default function PayBillPage() {
                 <option value="other">Other</option>
               </select>
             </div>
-            <div className="sm:col-span-2">
-              <label className="label">Reference # (check number, transaction ID, etc.)</label>
+            <div>
+              <label className="block text-sm font-medium text-corporate-dark mb-1">Reference #</label>
               <input
                 type="text"
                 value={formData.reference}
                 onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
                 className="input-field"
-                placeholder="e.g., Check #1234 or ACH-98765"
+                placeholder="e.g., Check #1234"
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="label">Notes</label>
+              <label className="block text-sm font-medium text-corporate-dark mb-1">Notes</label>
               <textarea
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}

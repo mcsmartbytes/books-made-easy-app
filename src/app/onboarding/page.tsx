@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/utils/supabase';
 import { industries } from '@/data/industries';
+import { normalBalanceByType, getAccountHelpText } from '@/data/accountHelp';
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -96,8 +97,8 @@ export default function OnboardingPage() {
   };
 
   const getDefaultAccounts = (userId: string) => {
-    // Standard chart of accounts
-    const accounts = [
+    // Standard chart of accounts with normal balance and help text
+    const rawAccounts = [
       // Assets
       { user_id: userId, code: '1000', name: 'Cash on Hand', type: 'asset', subtype: 'Cash' },
       { user_id: userId, code: '1010', name: 'Business Checking', type: 'asset', subtype: 'Bank' },
@@ -115,7 +116,7 @@ export default function OnboardingPage() {
       { user_id: userId, code: '3000', name: 'Owner\'s Equity', type: 'equity', subtype: 'Owner Equity' },
       { user_id: userId, code: '3100', name: 'Retained Earnings', type: 'equity', subtype: 'Retained Earnings' },
       { user_id: userId, code: '3200', name: 'Owner\'s Draw', type: 'equity', subtype: 'Owner Equity' },
-      // Income - varies by industry
+      // Income
       { user_id: userId, code: '4000', name: 'Service Revenue', type: 'income', subtype: 'Service Revenue' },
       { user_id: userId, code: '4100', name: 'Product Sales', type: 'income', subtype: 'Sales' },
       { user_id: userId, code: '4900', name: 'Other Income', type: 'income', subtype: 'Other Income' },
@@ -133,14 +134,19 @@ export default function OnboardingPage() {
       { user_id: userId, code: '6900', name: 'Repairs & Maintenance', type: 'expense', subtype: 'Operating Expenses' },
       { user_id: userId, code: '7000', name: 'Supplies', type: 'expense', subtype: 'Operating Expenses' },
       { user_id: userId, code: '7100', name: 'Travel & Meals', type: 'expense', subtype: 'Operating Expenses' },
-      { user_id: userId, code: '7200', name: 'Utilities', type: 'expense', subtype: 'Operating Expenses' },
+      { user_id: userId, code: '7200', name: 'Utilities', type: 'expense', subtype: 'Utilities' },
       { user_id: userId, code: '7300', name: 'Vehicle Expenses', type: 'expense', subtype: 'Operating Expenses' },
       { user_id: userId, code: '7400', name: 'Wages & Payroll', type: 'expense', subtype: 'Payroll' },
       { user_id: userId, code: '7500', name: 'Payroll Taxes', type: 'expense', subtype: 'Payroll' },
-      { user_id: userId, code: '7900', name: 'Other Expenses', type: 'expense', subtype: 'Operating Expenses' },
+      { user_id: userId, code: '7900', name: 'Other Expenses', type: 'expense', subtype: 'Other Expenses' },
     ];
 
-    return accounts;
+    // Add normal_balance and help_text to each account
+    return rawAccounts.map(acct => ({
+      ...acct,
+      normal_balance: normalBalanceByType[acct.type] || 'debit',
+      help_text: getAccountHelpText(acct.subtype, acct.type),
+    }));
   };
 
   if (checkingAuth) {

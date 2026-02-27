@@ -1,6 +1,6 @@
-const CACHE_NAME = 'books-made-easy-v2';
-const STATIC_CACHE = 'books-static-v2';
-const DYNAMIC_CACHE = 'books-dynamic-v2';
+const CACHE_NAME = 'books-your-way-v1';
+const STATIC_CACHE = 'books-static-v3';
+const DYNAMIC_CACHE = 'books-dynamic-v3';
 
 // Assets to cache immediately on install
 const STATIC_ASSETS = [
@@ -47,6 +47,11 @@ self.addEventListener('fetch', (event) => {
 
   // Skip API requests - always go to network
   if (url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // Skip Next.js build artifacts - hashes change every rebuild
+  if (url.pathname.startsWith('/_next/')) {
     return;
   }
 

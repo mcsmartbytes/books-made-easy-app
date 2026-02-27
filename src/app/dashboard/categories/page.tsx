@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/utils/supabase';
 import { irsCategories } from '@/data/industries';
+import { irsCategoryToLine } from '@/data/irsReferences';
 
 interface Category {
   id: string;
@@ -257,7 +258,14 @@ export default function CategoriesPage() {
                         <p className="font-medium text-corporate-dark">{category.name}</p>
                         <div className="flex items-center gap-2 text-xs text-corporate-gray">
                           {category.tax_deductible && <span className="text-green-600">Tax Deductible</span>}
-                          {category.irs_category && <span>IRS: {category.irs_category}</span>}
+                          {category.irs_category && (
+                            <span>
+                              IRS: {category.irs_category}
+                              {irsCategoryToLine[category.irs_category] && (
+                                <span className="text-primary-600 ml-1">({irsCategoryToLine[category.irs_category]})</span>
+                              )}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
