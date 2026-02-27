@@ -38,6 +38,38 @@ const RELATION_MAP: Record<string, Record<string, { fk: string; type: 'belongs_t
   products_services: {
     categories: { fk: 'category_id', type: 'belongs_to' },
   },
+  payments: {
+    invoices: { fk: 'invoice_id', type: 'belongs_to' },
+    bills: { fk: 'bill_id', type: 'belongs_to' },
+  },
+  deposits: {
+    bank_accounts: { fk: 'bank_account_id', type: 'belongs_to' },
+    deposit_items: { fk: 'deposit_id', type: 'has_many' },
+  },
+  deposit_items: {
+    deposits: { fk: 'deposit_id', type: 'belongs_to' },
+    payments_received: { fk: 'payment_id', type: 'belongs_to' },
+  },
+  bank_accounts: {
+    accounts: { fk: 'account_id', type: 'belongs_to' },
+    bank_transactions: { fk: 'bank_account_id', type: 'has_many' },
+    reconciliations: { fk: 'bank_account_id', type: 'has_many' },
+  },
+  bank_transactions: {
+    bank_accounts: { fk: 'bank_account_id', type: 'belongs_to' },
+    categories: { fk: 'category_id', type: 'belongs_to' },
+    reconciliations: { fk: 'reconciliation_id', type: 'belongs_to' },
+  },
+  reconciliations: {
+    bank_accounts: { fk: 'bank_account_id', type: 'belongs_to' },
+    bank_transactions: { fk: 'reconciliation_id', type: 'has_many' },
+  },
+  invoice_reminders: {
+    invoices: { fk: 'invoice_id', type: 'belongs_to' },
+  },
+  invoice_late_fees: {
+    invoices: { fk: 'invoice_id', type: 'belongs_to' },
+  },
 };
 
 interface ParsedSelect {

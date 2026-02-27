@@ -84,6 +84,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   subtype TEXT,
   description TEXT,
   balance REAL DEFAULT 0,
+  normal_balance TEXT DEFAULT 'debit' CHECK (normal_balance IN ('debit', 'credit')),
+  help_text TEXT,
   is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
@@ -354,6 +356,7 @@ CREATE TABLE IF NOT EXISTS payments_received (
   payment_method TEXT,
   reference_number TEXT,
   notes TEXT,
+  deposit_id TEXT REFERENCES deposits(id) ON DELETE SET NULL,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -609,6 +612,216 @@ CREATE INDEX IF NOT EXISTS idx_mileage_user_id ON mileage(user_id);
 CREATE INDEX IF NOT EXISTS idx_mileage_date ON mileage(date);
 
 -- ============================================
+-- DEPOSITS
+-- ============================================
+CREATE TABLE IF NOT EXISTS deposits (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  bank_account_id TEXT REFERENCES bank_accounts(id) ON DELETE SET NULL,
+  deposit_number TEXT NOT NULL,
+  deposit_date TEXT NOT NULL DEFAULT (date('now')),
+  total REAL DEFAULT 0,
+  memo TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'deposited')),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_deposits_user_id ON deposits(user_id);
+CREATE INDEX IF NOT EXISTS idx_deposits_bank_account_id ON deposits(bank_account_id);
+CREATE INDEX IF NOT EXISTS idx_deposits_status ON deposits(status);
+
+-- ============================================
+-- DEPOSIT ITEMS
+-- ============================================
+CREATE TABLE IF NOT EXISTS deposit_items (
+  id TEXT PRIMARY KEY,
+  deposit_id TEXT NOT NULL REFERENCES deposits(id) ON DELETE CASCADE,
+  payment_id TEXT REFERENCES payments_received(id) ON DELETE SET NULL,
+  description TEXT,
+  amount REAL NOT NULL DEFAULT 0,
+  sort_order INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_deposit_items_deposit_id ON deposit_items(deposit_id);
+CREATE INDEX IF NOT EXISTS idx_deposit_items_payment_id ON deposit_items(payment_id);
+
+-- ============================================
+-- BANK ACCOUNTS
+-- ============================================
+CREATE TABLE IF NOT EXISTS bank_accounts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  account_id TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  institution TEXT,
+  account_type TEXT NOT NULL DEFAULT 'checking' CHECK (account_type IN ('checking', 'savings', 'credit_card', 'loan', 'other')),
+  account_number_last4 TEXT,
+  routing_number_last4 TEXT,
+  current_balance REAL DEFAULT 0,
+  available_balance REAL DEFAULT 0,
+  currency TEXT DEFAULT 'USD',
+  is_active INTEGER DEFAULT 1,
+  last_reconciled_date TEXT,
+  last_reconciled_balance REAL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_bank_accounts_user_id ON bank_accounts(user_id);
+CREATE INDEX IF NOT EXISTS idx_bank_accounts_account_id ON bank_accounts(account_id);
+
+-- ============================================
+-- RECONCILIATIONS
+-- ============================================
+CREATE TABLE IF NOT EXISTS reconciliations (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  bank_account_id TEXT NOT NULL REFERENCES bank_accounts(id) ON DELETE CASCADE,
+  statement_date TEXT NOT NULL,
+  statement_balance REAL NOT NULL,
+  opening_balance REAL NOT NULL DEFAULT 0,
+  cleared_balance REAL DEFAULT 0,
+  difference REAL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed')),
+  completed_at TEXT,
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_reconciliations_user_id ON reconciliations(user_id);
+CREATE INDEX IF NOT EXISTS idx_reconciliations_bank_account_id ON reconciliations(bank_account_id);
+CREATE INDEX IF NOT EXISTS idx_reconciliations_status ON reconciliations(status);
+
+-- ============================================
+-- BANK TRANSACTIONS
+-- ============================================
+CREATE TABLE IF NOT EXISTS bank_transactions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  bank_account_id TEXT NOT NULL REFERENCES bank_accounts(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  description TEXT NOT NULL,
+  amount REAL NOT NULL,
+  type TEXT NOT NULL DEFAULT 'debit' CHECK (type IN ('debit', 'credit')),
+  category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+  payee TEXT,
+  reference TEXT,
+  check_number TEXT,
+  memo TEXT,
+  status TEXT NOT NULL DEFAULT 'unreviewed' CHECK (status IN ('unreviewed', 'reviewed', 'matched', 'excluded')),
+  matched_transaction_type TEXT CHECK (matched_transaction_type IN ('invoice', 'bill', 'expense', 'payment', 'journal_entry', NULL)),
+  matched_transaction_id TEXT,
+  reconciliation_id TEXT REFERENCES reconciliations(id) ON DELETE SET NULL,
+  is_reconciled INTEGER DEFAULT 0,
+  import_id TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_user_id ON bank_transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_bank_account_id ON bank_transactions(bank_account_id);
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_date ON bank_transactions(date);
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_status ON bank_transactions(status);
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_reconciliation_id ON bank_transactions(reconciliation_id);
+
+-- ============================================
+-- CUSTOMER NOTES
+-- ============================================
+CREATE TABLE IF NOT EXISTS customer_notes (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_customer_notes_user_id ON customer_notes(user_id);
+CREATE INDEX IF NOT EXISTS idx_customer_notes_customer_id ON customer_notes(customer_id);
+
+-- ============================================
+-- CUSTOMER TODOS
+-- ============================================
+CREATE TABLE IF NOT EXISTS customer_todos (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  is_completed INTEGER DEFAULT 0,
+  due_date TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_customer_todos_user_id ON customer_todos(user_id);
+CREATE INDEX IF NOT EXISTS idx_customer_todos_customer_id ON customer_todos(customer_id);
+
+-- ============================================
+-- REMINDER SETTINGS (per-user config)
+-- ============================================
+CREATE TABLE IF NOT EXISTS reminder_settings (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  enabled INTEGER DEFAULT 0,
+  grace_period_days INTEGER DEFAULT 3,
+  frequency_days INTEGER DEFAULT 7,
+  max_reminders INTEGER DEFAULT 3,
+  default_message TEXT DEFAULT 'This is a friendly reminder that your invoice is past due. Please arrange payment at your earliest convenience.',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_reminder_settings_user_id ON reminder_settings(user_id);
+
+-- ============================================
+-- INVOICE REMINDERS (log of each reminder sent)
+-- ============================================
+CREATE TABLE IF NOT EXISTS invoice_reminders (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  reminder_type TEXT NOT NULL DEFAULT 'manual' CHECK (reminder_type IN ('manual', 'automatic')),
+  message TEXT,
+  sent_at TEXT DEFAULT (datetime('now')),
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_invoice_reminders_user_id ON invoice_reminders(user_id);
+CREATE INDEX IF NOT EXISTS idx_invoice_reminders_invoice_id ON invoice_reminders(invoice_id);
+
+-- ============================================
+-- LATE FEE SETTINGS (per-user config)
+-- ============================================
+CREATE TABLE IF NOT EXISTS late_fee_settings (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  enabled INTEGER DEFAULT 0,
+  fee_type TEXT NOT NULL DEFAULT 'percentage' CHECK (fee_type IN ('percentage', 'flat')),
+  fee_amount REAL DEFAULT 1.5,
+  grace_period_days INTEGER DEFAULT 5,
+  auto_apply INTEGER DEFAULT 0,
+  max_fees_per_invoice INTEGER DEFAULT 3,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_late_fee_settings_user_id ON late_fee_settings(user_id);
+
+-- ============================================
+-- INVOICE LATE FEES (audit trail)
+-- ============================================
+CREATE TABLE IF NOT EXISTS invoice_late_fees (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  fee_type TEXT NOT NULL CHECK (fee_type IN ('percentage', 'flat')),
+  fee_amount REAL NOT NULL,
+  calculated_fee REAL NOT NULL,
+  invoice_total_before REAL NOT NULL,
+  invoice_total_after REAL NOT NULL,
+  applied_type TEXT NOT NULL DEFAULT 'manual' CHECK (applied_type IN ('manual', 'automatic')),
+  reversed INTEGER DEFAULT 0,
+  applied_at TEXT DEFAULT (datetime('now')),
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_invoice_late_fees_user_id ON invoice_late_fees(user_id);
+CREATE INDEX IF NOT EXISTS idx_invoice_late_fees_invoice_id ON invoice_late_fees(invoice_id);
+
+-- ============================================
 -- TRIGGERS: auto-update updated_at
 -- ============================================
 CREATE TRIGGER IF NOT EXISTS update_users_updated_at AFTER UPDATE ON users
@@ -667,3 +880,27 @@ BEGIN UPDATE item_category_rules SET updated_at = datetime('now') WHERE id = NEW
 
 CREATE TRIGGER IF NOT EXISTS update_recurring_expenses_updated_at AFTER UPDATE ON recurring_expenses
 BEGIN UPDATE recurring_expenses SET updated_at = datetime('now') WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_deposits_updated_at AFTER UPDATE ON deposits
+BEGIN UPDATE deposits SET updated_at = datetime('now') WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_bank_accounts_updated_at AFTER UPDATE ON bank_accounts
+BEGIN UPDATE bank_accounts SET updated_at = datetime('now') WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_bank_transactions_updated_at AFTER UPDATE ON bank_transactions
+BEGIN UPDATE bank_transactions SET updated_at = datetime('now') WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_reconciliations_updated_at AFTER UPDATE ON reconciliations
+BEGIN UPDATE reconciliations SET updated_at = datetime('now') WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_customer_notes_updated_at AFTER UPDATE ON customer_notes
+BEGIN UPDATE customer_notes SET updated_at = datetime('now') WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_customer_todos_updated_at AFTER UPDATE ON customer_todos
+BEGIN UPDATE customer_todos SET updated_at = datetime('now') WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_reminder_settings_updated_at AFTER UPDATE ON reminder_settings
+BEGIN UPDATE reminder_settings SET updated_at = datetime('now') WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_late_fee_settings_updated_at AFTER UPDATE ON late_fee_settings
+BEGIN UPDATE late_fee_settings SET updated_at = datetime('now') WHERE id = NEW.id; END;

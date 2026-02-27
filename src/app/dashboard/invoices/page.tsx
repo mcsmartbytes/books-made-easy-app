@@ -22,6 +22,7 @@ interface Invoice {
     job_number: string;
     name: string;
   };
+  reminder_count?: number;
 }
 
 export default function InvoicesPage() {
@@ -29,6 +30,7 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
     loadInvoices();
@@ -38,6 +40,8 @@ export default function InvoicesPage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
 
+    const userId = session.user.id;
+
     const { data, error } = await supabase
       .from('invoices')
       .select(`
@@ -45,7 +49,7 @@ export default function InvoicesPage() {
         customers (name, email),
         jobs (job_number, name)
       `)
-      .eq('user_id', session.user.id)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -59,9 +63,75 @@ export default function InvoicesPage() {
         }
         return inv;
       });
-      setInvoices(updatedInvoices);
+
+      // Load reminder counts for overdue invoices
+      const remindersRes = await fetch(`/api/invoice-reminders?user_id=${userId}`).then(r => r.json());
+      const reminders = remindersRes.data || [];
+      const reminderCounts: Record<string, number> = {};
+      for (const r of reminders) {
+        reminderCounts[r.invoice_id] = (reminderCounts[r.invoice_id] || 0) + 1;
+      }
+
+      const withCounts = updatedInvoices.map((inv: Invoice) => ({
+        ...inv,
+        reminder_count: reminderCounts[inv.id] || 0,
+      }));
+
+      setInvoices(withCounts);
     }
     setLoading(false);
+  };
+
+  const handleSendReminder = async (invoiceId: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    setActionLoading(`reminder-${invoiceId}`);
+    try {
+      const res = await fetch('/api/invoice-reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: session.user.id, invoice_id: invoiceId }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setInvoices(prev => prev.map(inv =>
+          inv.id === invoiceId ? { ...inv, reminder_count: (inv.reminder_count || 0) + 1 } : inv
+        ));
+      } else {
+        alert(result.error || 'Failed to send reminder');
+      }
+    } catch {
+      alert('Failed to send reminder');
+    }
+    setActionLoading(null);
+  };
+
+  const handleApplyLateFee = async (invoiceId: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    if (!confirm('Apply a late fee to this invoice? The invoice total will be updated.')) return;
+
+    setActionLoading(`fee-${invoiceId}`);
+    try {
+      const res = await fetch('/api/invoice-late-fees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: session.user.id, invoice_id: invoiceId }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setInvoices(prev => prev.map(inv =>
+          inv.id === invoiceId ? { ...inv, total: result.new_total } : inv
+        ));
+      } else {
+        alert(result.error || 'Failed to apply late fee');
+      }
+    } catch {
+      alert('Failed to apply late fee');
+    }
+    setActionLoading(null);
   };
 
   const formatCurrency = (amount: number) => {
@@ -263,7 +333,7 @@ export default function InvoicesPage() {
                         {formatCurrency(invoice.total || 0)}
                       </td>
                       <td className="text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1">
                           <Link
                             href={`/dashboard/invoices/${invoice.id}`}
                             className="p-2 text-corporate-gray hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
@@ -294,6 +364,35 @@ export default function InvoicesPage() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                               </svg>
                             </Link>
+                          )}
+                          {invoice.status === 'overdue' && (
+                            <>
+                              <button
+                                onClick={() => handleSendReminder(invoice.id)}
+                                disabled={actionLoading === `reminder-${invoice.id}`}
+                                className="relative p-2 text-corporate-gray hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-50"
+                                title="Send Reminder"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                </svg>
+                                {(invoice.reminder_count || 0) > 0 && (
+                                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                                    {invoice.reminder_count}
+                                  </span>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleApplyLateFee(invoice.id)}
+                                disabled={actionLoading === `fee-${invoice.id}`}
+                                className="p-2 text-corporate-gray hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                                title="Apply Late Fee"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 10v1m4.5-6.5h.01M7.5 12.5h.01" />
+                                </svg>
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
