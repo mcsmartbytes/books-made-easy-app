@@ -1,101 +1,345 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/utils/supabaseAdmin';
+import { execSql } from '@/lib/turso';
+import { clearDemoData, getAccountIdMap, getCategoryIdMap } from './seedHelpers';
+import {
+  getCompanySettings, getDefaultAccounts, getCategories,
+  getCustomers, getVendors, getProductsServices,
+  getJobs, getJobPhases, getEstimates, getEstimateItems,
+  getInvoices, getInvoiceItems, getBills, getBillItems,
+  getPayments, getPaymentsReceived, getPaymentsMade,
+  getBankAccounts, getDeposits, getDepositItems, getReconciliations, getBankTransactions,
+  getExpenses, getJournalEntries, getJournalEntryLines,
+  getCustomerNotes, getCustomerTodos,
+  getReminderSettings, getLateFeeSettings, getInvoiceReminders, getInvoiceLateFees,
+  getMerchantRules, getItemCategoryRules, getRecurringExpenses,
+  getDetectedSubscriptions, getSubscriptionPriceHistory,
+  getBudgets, getMileage, getCustomReports,
+} from './seedData';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ids(rows: any[]): string[] {
+  return rows.map(r => String(r.id));
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    let userId = body.user_id;
+    const userId = body.user_id;
+    const action = body.action || 'seed';
 
-    // If no user_id provided, get first user or create demo user
     if (!userId) {
-      const { data: users } = await supabaseAdmin.from('customers').select('user_id').limit(1);
-      if (users && users.length > 0 && users[0].user_id) {
-        userId = users[0].user_id;
-      } else {
-        // Use a demo user ID
-        userId = 'demo-user-' + Date.now();
-      }
+      return NextResponse.json({ error: 'user_id is required' }, { status: 400 });
     }
 
-    // Seed Customers
-    const customers = [
-      { user_id: userId, name: 'ABC Construction', email: 'billing@abcconstruction.com', phone: '(555) 123-4567', company: 'ABC Construction LLC', address: '123 Main St', city: 'Denver', state: 'CO', zip: '80202', balance: 2500.00 },
-      { user_id: userId, name: 'Smith & Associates', email: 'accounts@smithassoc.com', phone: '(555) 234-5678', company: 'Smith & Associates', address: '456 Oak Ave', city: 'Boulder', state: 'CO', zip: '80301', balance: 1250.00 },
-      { user_id: userId, name: 'Metro Properties', email: 'pay@metroproperties.com', phone: '(555) 345-6789', company: 'Metro Properties Inc', address: '789 Pine St', city: 'Aurora', state: 'CO', zip: '80012', balance: 0 },
-      { user_id: userId, name: 'Johnson Enterprises', email: 'ap@johnsonent.com', phone: '(555) 456-7890', company: 'Johnson Enterprises', address: '321 Elm Dr', city: 'Lakewood', state: 'CO', zip: '80226', balance: 5000.00 },
-      { user_id: userId, name: 'Sunrise Retail', email: 'finance@sunriseretail.com', phone: '(555) 567-8901', company: 'Sunrise Retail Corp', address: '654 Maple Ln', city: 'Centennial', state: 'CO', zip: '80112', balance: 750.00 },
-    ];
-
-    const { data: customerData } = await supabaseAdmin.from('customers').insert(customers).select('*');
-
-    // Seed Vendors
-    const vendors = [
-      { user_id: userId, name: 'Office Depot', email: 'orders@officedepot.com', phone: '(800) 463-3768', company: 'Office Depot Inc', address: '6600 N Military Trail', city: 'Boca Raton', state: 'FL', zip: '33496', balance: 450.00 },
-      { user_id: userId, name: 'City Utilities', email: 'business@cityutil.com', phone: '(555) 999-1234', company: 'City Utilities Dept', address: '100 City Center', city: 'Denver', state: 'CO', zip: '80202', balance: 320.00 },
-      { user_id: userId, name: 'Tech Solutions', email: 'billing@techsolutions.com', phone: '(555) 888-2345', company: 'Tech Solutions LLC', address: '500 Tech Blvd', city: 'Austin', state: 'TX', zip: '78701', balance: 1200.00 },
-    ];
-
-    await supabaseAdmin.from('vendors').insert(vendors);
-
-    // Seed Invoices
-    if (customerData && customerData.length > 0) {
-      const invoices = [
-        { user_id: userId, customer_id: customerData[0].id, invoice_number: 'INV-001', status: 'sent', subtotal: 2500, tax_rate: 8, tax_amount: 200, total: 2700, amount_paid: 0, issue_date: '2024-01-15', due_date: '2024-02-15', notes: 'Construction consulting services' },
-        { user_id: userId, customer_id: customerData[1].id, invoice_number: 'INV-002', status: 'paid', subtotal: 1250, tax_rate: 8, tax_amount: 100, total: 1350, amount_paid: 1350, issue_date: '2024-01-10', due_date: '2024-02-10', notes: 'Professional services - January' },
-        { user_id: userId, customer_id: customerData[2].id, invoice_number: 'INV-003', status: 'draft', subtotal: 3500, tax_rate: 8, tax_amount: 280, total: 3780, amount_paid: 0, issue_date: '2024-01-20', due_date: '2024-02-20', notes: 'Property management services' },
-        { user_id: userId, customer_id: customerData[3].id, invoice_number: 'INV-004', status: 'overdue', subtotal: 5000, tax_rate: 8, tax_amount: 400, total: 5400, amount_paid: 0, issue_date: '2023-12-01', due_date: '2024-01-01', notes: 'Enterprise software license' },
-        { user_id: userId, customer_id: customerData[4].id, invoice_number: 'INV-005', status: 'sent', subtotal: 750, tax_rate: 8, tax_amount: 60, total: 810, amount_paid: 0, issue_date: '2024-01-18', due_date: '2024-02-18', notes: 'Retail consulting' },
-      ];
-
-      const { data: invoiceData } = await supabaseAdmin.from('invoices').insert(invoices).select('*');
-
-      // Seed Invoice Items
-      if (invoiceData) {
-        const invoiceItems = [
-          { invoice_id: invoiceData[0].id, description: 'Construction consulting - 10 hours', quantity: 10, rate: 250, amount: 2500 },
-          { invoice_id: invoiceData[1].id, description: 'Professional services - January', quantity: 1, rate: 1250, amount: 1250 },
-          { invoice_id: invoiceData[2].id, description: 'Property management fee', quantity: 1, rate: 2500, amount: 2500 },
-          { invoice_id: invoiceData[2].id, description: 'Maintenance coordination', quantity: 1, rate: 1000, amount: 1000 },
-          { invoice_id: invoiceData[3].id, description: 'Enterprise license - Annual', quantity: 1, rate: 5000, amount: 5000 },
-          { invoice_id: invoiceData[4].id, description: 'Retail consulting - 3 hours', quantity: 3, rate: 250, amount: 750 },
-        ];
-
-        await supabaseAdmin.from('invoice_items').insert(invoiceItems);
-      }
+    // ── CLEAR ACTION ──────────────────────────────────────────
+    if (action === 'clear') {
+      const result = await clearDemoData(userId);
+      return NextResponse.json({ success: true, ...result });
     }
 
-    // Seed Jobs
-    const jobs = [
-      { user_id: userId, job_number: 'JOB-001', name: 'Office Renovation Project', description: 'Complete office renovation for ABC Construction', status: 'in_progress', estimated_revenue: 15000, actual_revenue: 5000, estimated_cost: 8000, actual_cost: 3500 },
-      { user_id: userId, job_number: 'JOB-002', name: 'Website Redesign', description: 'Full website redesign for Smith & Associates', status: 'completed', estimated_revenue: 8000, actual_revenue: 8500, estimated_cost: 4000, actual_cost: 3800 },
-      { user_id: userId, job_number: 'JOB-003', name: 'Property Assessment', description: 'Full property assessment for Metro Properties', status: 'pending', estimated_revenue: 3500, actual_revenue: 0, estimated_cost: 1500, actual_cost: 0 },
-    ];
+    // ── FRESH: clear first, then seed ─────────────────────────
+    if (body.fresh) {
+      await clearDemoData(userId);
+    }
 
-    await supabaseAdmin.from('jobs').insert(jobs);
+    const seeded: Record<string, number> = {};
+
+    // ══════════════════════════════════════════════════════════
+    // PHASE 1 — Foundation
+    // ══════════════════════════════════════════════════════════
+
+    // Company Settings (upsert)
+    await supabaseAdmin.from('company_settings')
+      .upsert(getCompanySettings(userId), { onConflict: 'user_id' });
+    seeded.company_settings = 1;
+
+    // Chart of Accounts (upsert to avoid duplicates on re-run)
+    const accounts = getDefaultAccounts(userId);
+    for (const acct of accounts) {
+      await supabaseAdmin.from('accounts')
+        .upsert(acct, { onConflict: 'code' });
+    }
+    seeded.accounts = accounts.length;
+
+    // Categories (check if exist first)
+    const existingCats = await execSql(
+      'SELECT COUNT(*) as cnt FROM "categories" WHERE "user_id" = ?', [userId],
+    );
+    if (!existingCats[0]?.cnt || Number(existingCats[0].cnt) === 0) {
+      await supabaseAdmin.from('categories').insert(getCategories(userId));
+    }
+    seeded.categories = getCategories(userId).length;
+
+    // Load lookup maps for FK references
+    const acctMap = await getAccountIdMap(userId);
+    const catMap = await getCategoryIdMap(userId);
+
+    // ══════════════════════════════════════════════════════════
+    // PHASE 2 — Entities
+    // ══════════════════════════════════════════════════════════
+
+    const { data: customerRows } = await supabaseAdmin.from('customers')
+      .insert(getCustomers(userId)).select('*');
+    const customerIds = ids(customerRows || []);
+    seeded.customers = customerIds.length;
+
+    const { data: vendorRows } = await supabaseAdmin.from('vendors')
+      .insert(getVendors(userId)).select('*');
+    const vendorIds = ids(vendorRows || []);
+    seeded.vendors = vendorIds.length;
+
+    const { data: productRows } = await supabaseAdmin.from('products_services')
+      .insert(getProductsServices(userId, catMap, acctMap)).select('*');
+    seeded.products_services = (productRows || []).length;
+
+    // ══════════════════════════════════════════════════════════
+    // PHASE 3 — Jobs & Estimates
+    // ══════════════════════════════════════════════════════════
+
+    const { data: jobRows } = await supabaseAdmin.from('jobs')
+      .insert(getJobs(userId, customerIds)).select('*');
+    const jobIds = ids(jobRows || []);
+    seeded.jobs = jobIds.length;
+
+    await supabaseAdmin.from('job_phases').insert(getJobPhases(jobIds));
+    seeded.job_phases = getJobPhases(jobIds).length;
+
+    const { data: estimateRows } = await supabaseAdmin.from('estimates')
+      .insert(getEstimates(userId, customerIds)).select('*');
+    const estimateIds = ids(estimateRows || []);
+    seeded.estimates = estimateIds.length;
+
+    await supabaseAdmin.from('estimate_items').insert(getEstimateItems(estimateIds));
+    seeded.estimate_items = getEstimateItems(estimateIds).length;
+
+    // ══════════════════════════════════════════════════════════
+    // PHASE 4 — Invoices & Bills
+    // ══════════════════════════════════════════════════════════
+
+    const { data: invoiceRows } = await supabaseAdmin.from('invoices')
+      .insert(getInvoices(userId, customerIds, jobIds, estimateIds)).select('*');
+    const invoiceIds = ids(invoiceRows || []);
+    seeded.invoices = invoiceIds.length;
+
+    await supabaseAdmin.from('invoice_items').insert(getInvoiceItems(invoiceIds, acctMap));
+    seeded.invoice_items = getInvoiceItems(invoiceIds, acctMap).length;
+
+    // Link converted estimate to its invoice
+    if (estimateIds[3] && invoiceIds[1]) {
+      await execSql(
+        'UPDATE "estimates" SET "converted_invoice_id" = ? WHERE "id" = ?',
+        [invoiceIds[1], estimateIds[3]],
+      );
+    }
+
+    const { data: billRows } = await supabaseAdmin.from('bills')
+      .insert(getBills(userId, vendorIds, catMap)).select('*');
+    const billIds = ids(billRows || []);
+    seeded.bills = billIds.length;
+
+    await supabaseAdmin.from('bill_items').insert(getBillItems(billIds, catMap, acctMap));
+    seeded.bill_items = getBillItems(billIds, catMap, acctMap).length;
+
+    // ══════════════════════════════════════════════════════════
+    // PHASE 5 — Payments
+    // ══════════════════════════════════════════════════════════
+
+    await supabaseAdmin.from('payments')
+      .insert(getPayments(userId, invoiceIds, billIds));
+    seeded.payments = getPayments(userId, invoiceIds, billIds).length;
+
+    const { data: prRows } = await supabaseAdmin.from('payments_received')
+      .insert(getPaymentsReceived(userId, invoiceIds, customerIds)).select('*');
+    const prIds = ids(prRows || []);
+    seeded.payments_received = prIds.length;
+
+    await supabaseAdmin.from('payments_made')
+      .insert(getPaymentsMade(userId, billIds, vendorIds));
+    seeded.payments_made = getPaymentsMade(userId, billIds, vendorIds).length;
+
+    // ══════════════════════════════════════════════════════════
+    // PHASE 6 — Banking
+    // ══════════════════════════════════════════════════════════
+
+    const { data: baRows } = await supabaseAdmin.from('bank_accounts')
+      .insert(getBankAccounts(userId, acctMap)).select('*');
+    const bankAccountIds = ids(baRows || []);
+    seeded.bank_accounts = bankAccountIds.length;
+
+    const { data: depRows } = await supabaseAdmin.from('deposits')
+      .insert(getDeposits(userId, bankAccountIds)).select('*');
+    const depositIds = ids(depRows || []);
+    seeded.deposits = depositIds.length;
+
+    await supabaseAdmin.from('deposit_items')
+      .insert(getDepositItems(depositIds, prIds));
+    seeded.deposit_items = getDepositItems(depositIds, prIds).length;
+
+    // Link payments_received to deposits
+    if (prIds[0] && depositIds[0]) {
+      await execSql('UPDATE "payments_received" SET "deposit_id" = ? WHERE "id" = ?', [depositIds[0], prIds[0]]);
+    }
+    if (prIds[1] && depositIds[0]) {
+      await execSql('UPDATE "payments_received" SET "deposit_id" = ? WHERE "id" = ?', [depositIds[0], prIds[1]]);
+    }
+    if (prIds[2] && depositIds[1]) {
+      await execSql('UPDATE "payments_received" SET "deposit_id" = ? WHERE "id" = ?', [depositIds[1], prIds[2]]);
+    }
+
+    const { data: reconRows } = await supabaseAdmin.from('reconciliations')
+      .insert(getReconciliations(userId, bankAccountIds)).select('*');
+    const reconIds = ids(reconRows || []);
+    seeded.reconciliations = reconIds.length;
+
+    // Update bank_account last_reconciled for the completed reconciliation
+    if (bankAccountIds[0] && reconRows && reconRows[0]) {
+      await execSql(
+        'UPDATE "bank_accounts" SET "last_reconciled_date" = ?, "last_reconciled_balance" = ? WHERE "id" = ?',
+        [String(reconRows[0].statement_date), reconRows[0].statement_balance, bankAccountIds[0]],
+      );
+    }
+
+    const bankTxns = getBankTransactions(userId, bankAccountIds, reconIds, catMap);
+    await supabaseAdmin.from('bank_transactions').insert(bankTxns);
+    seeded.bank_transactions = bankTxns.length;
+
+    // ══════════════════════════════════════════════════════════
+    // PHASE 7 — Everything Else
+    // ══════════════════════════════════════════════════════════
+
+    await supabaseAdmin.from('expenses').insert(getExpenses(userId, catMap));
+    seeded.expenses = getExpenses(userId, catMap).length;
+
+    const { data: jeRows } = await supabaseAdmin.from('journal_entries')
+      .insert(getJournalEntries(userId)).select('*');
+    const jeIds = ids(jeRows || []);
+    seeded.journal_entries = jeIds.length;
+
+    await supabaseAdmin.from('journal_entry_lines')
+      .insert(getJournalEntryLines(jeIds, acctMap));
+    seeded.journal_entry_lines = getJournalEntryLines(jeIds, acctMap).length;
+
+    await supabaseAdmin.from('customer_notes')
+      .insert(getCustomerNotes(userId, customerIds));
+    seeded.customer_notes = getCustomerNotes(userId, customerIds).length;
+
+    await supabaseAdmin.from('customer_todos')
+      .insert(getCustomerTodos(userId, customerIds));
+    seeded.customer_todos = getCustomerTodos(userId, customerIds).length;
+
+    await supabaseAdmin.from('reminder_settings')
+      .upsert(getReminderSettings(userId), { onConflict: 'user_id' });
+    seeded.reminder_settings = 1;
+
+    await supabaseAdmin.from('late_fee_settings')
+      .upsert(getLateFeeSettings(userId), { onConflict: 'user_id' });
+    seeded.late_fee_settings = 1;
+
+    await supabaseAdmin.from('invoice_reminders')
+      .insert(getInvoiceReminders(userId, invoiceIds));
+    seeded.invoice_reminders = getInvoiceReminders(userId, invoiceIds).length;
+
+    // Late fees (also update invoice totals)
+    const lateFees = getInvoiceLateFees(userId, invoiceIds);
+    await supabaseAdmin.from('invoice_late_fees').insert(lateFees);
+    seeded.invoice_late_fees = lateFees.length;
+
+    // Update overdue invoice totals to reflect late fees
+    for (const fee of lateFees) {
+      await execSql(
+        'UPDATE "invoices" SET "total" = ? WHERE "id" = ?',
+        [fee.invoice_total_after, fee.invoice_id],
+      );
+    }
+
+    await supabaseAdmin.from('merchant_rules')
+      .insert(getMerchantRules(userId, catMap));
+    seeded.merchant_rules = getMerchantRules(userId, catMap).length;
+
+    await supabaseAdmin.from('item_category_rules')
+      .insert(getItemCategoryRules(userId, catMap));
+    seeded.item_category_rules = getItemCategoryRules(userId, catMap).length;
+
+    await supabaseAdmin.from('recurring_expenses')
+      .insert(getRecurringExpenses(userId, catMap));
+    seeded.recurring_expenses = getRecurringExpenses(userId, catMap).length;
+
+    const { data: subRows } = await supabaseAdmin.from('detected_subscriptions')
+      .insert(getDetectedSubscriptions(userId, catMap)).select('*');
+    const subIds = ids(subRows || []);
+    seeded.detected_subscriptions = subIds.length;
+
+    await supabaseAdmin.from('subscription_price_history')
+      .insert(getSubscriptionPriceHistory(userId, subIds));
+    seeded.subscription_price_history = getSubscriptionPriceHistory(userId, subIds).length;
+
+    await supabaseAdmin.from('budgets').insert(getBudgets(userId, catMap));
+    seeded.budgets = getBudgets(userId, catMap).length;
+
+    await supabaseAdmin.from('mileage').insert(getMileage(userId));
+    seeded.mileage = getMileage(userId).length;
+
+    await supabaseAdmin.from('custom_reports').insert(getCustomReports(userId));
+    seeded.custom_reports = getCustomReports(userId).length;
+
+    // ══════════════════════════════════════════════════════════
+    // PHASE 8 — Balance Reconciliation
+    // ══════════════════════════════════════════════════════════
+
+    // Customer balances = SUM of outstanding (sent + overdue) invoice totals
+    const custBalances: Record<string, number> = {};
+    const allInvoices = getInvoices(userId, customerIds, jobIds, estimateIds);
+    for (let i = 0; i < allInvoices.length; i++) {
+      const inv = allInvoices[i];
+      if (inv.status === 'sent' || inv.status === 'overdue') {
+        const custId = inv.customer_id;
+        // Use the potentially updated total (after late fees)
+        const lf = lateFees.find(f => f.invoice_id === invoiceIds[i]);
+        const total = lf ? lf.invoice_total_after : inv.total;
+        custBalances[custId] = (custBalances[custId] || 0) + total;
+      }
+    }
+    for (const [custId, balance] of Object.entries(custBalances)) {
+      await execSql('UPDATE "customers" SET "balance" = ? WHERE "id" = ?', [balance, custId]);
+    }
+
+    // Vendor balances = SUM of outstanding (unpaid + overdue) bill totals
+    const vendBalances: Record<string, number> = {};
+    const allBills = getBills(userId, vendorIds, catMap);
+    for (const bill of allBills) {
+      if (bill.status === 'unpaid' || bill.status === 'overdue') {
+        const vid = bill.vendor_id;
+        vendBalances[vid] = (vendBalances[vid] || 0) + bill.total;
+      }
+    }
+    for (const [vid, balance] of Object.entries(vendBalances)) {
+      await execSql('UPDATE "vendors" SET "balance" = ? WHERE "id" = ?', [balance, vid]);
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Demo data seeded successfully',
-      data: {
-        customers: customers.length,
-        vendors: vendors.length,
-        invoices: 5,
-        jobs: jobs.length,
-      }
+      message: 'Demo data seeded successfully — all 38 tables populated',
+      seeded,
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Seed error:', error);
     return NextResponse.json(
       { success: false, error: errorMessage },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function GET() {
   return NextResponse.json({
-    message: 'POST to this endpoint with { "user_id": "your-user-id" } to seed demo data',
-    warning: 'This will add sample customers, vendors, invoices, and jobs',
+    message: 'POST to this endpoint to seed or clear demo data',
+    actions: {
+      seed: 'POST { "user_id": "...", "action": "seed" } — Seeds all tables with demo data',
+      clear: 'POST { "user_id": "...", "action": "clear" } — Deletes all data for the user',
+      fresh: 'POST { "user_id": "...", "action": "seed", "fresh": true } — Clears then seeds',
+    },
+    tables: '38 tables covered across 8 phases',
   });
 }
