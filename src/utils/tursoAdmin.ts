@@ -70,6 +70,35 @@ const RELATION_MAP: Record<string, Record<string, { fk: string; type: 'belongs_t
   invoice_late_fees: {
     invoices: { fk: 'invoice_id', type: 'belongs_to' },
   },
+  organizations: {
+    entities: { fk: 'organization_id', type: 'has_many' },
+    user_entity_roles: { fk: 'organization_id', type: 'has_many' },
+  },
+  entities: {
+    organizations: { fk: 'organization_id', type: 'belongs_to' },
+    locations: { fk: 'entity_id', type: 'has_many' },
+    user_entity_roles: { fk: 'entity_id', type: 'has_many' },
+  },
+  locations: {
+    entities: { fk: 'entity_id', type: 'belongs_to' },
+  },
+  user_entity_roles: {
+    users: { fk: 'user_id', type: 'belongs_to' },
+    organizations: { fk: 'organization_id', type: 'belongs_to' },
+    entities: { fk: 'entity_id', type: 'belongs_to' },
+  },
+  intercompany_transactions: {
+    organizations: { fk: 'organization_id', type: 'belongs_to' },
+  },
+  jobs: {
+    customers: { fk: 'customer_id', type: 'belongs_to' },
+    job_phases: { fk: 'job_id', type: 'has_many' },
+    entities: { fk: 'entity_id', type: 'belongs_to' },
+    locations: { fk: 'location_id', type: 'belongs_to' },
+  },
+  change_orders: {
+    jobs: { fk: 'job_id', type: 'belongs_to' },
+  },
 };
 
 interface ParsedSelect {
