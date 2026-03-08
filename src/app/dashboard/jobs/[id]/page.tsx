@@ -302,6 +302,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
+          <Link href={`/dashboard/jobs/${job.id}/change-orders`} className="btn-secondary">Change Orders</Link>
           <Link href={`/dashboard/jobs/${job.id}/edit`} className="btn-secondary">Edit Job</Link>
         </div>
       </div>
@@ -525,6 +526,86 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                   </div>
                 </div>
               </div>
+
+              {/* Change Orders & Retainage */}
+              {(financialData.change_orders?.total_count > 0 || financialData.retainage) && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Change Orders Impact */}
+                  {financialData.change_orders?.total_count > 0 && (
+                    <div className="card">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-corporate-dark">Change Orders</h3>
+                        <Link href={`/dashboard/jobs/${job.id}/change-orders`} className="text-sm text-primary-600 hover:text-primary-700">
+                          View All &rarr;
+                        </Link>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex justify-between py-2 border-b border-gray-100">
+                          <span className="text-corporate-gray">Original Contract</span>
+                          <span className="font-medium">{formatCurrency(financialData.contract.original_value)}</span>
+                        </div>
+                        <div className="flex justify-between py-2 border-b border-gray-100">
+                          <span className="text-corporate-gray">Approved CO Revenue ({financialData.change_orders.approved_count})</span>
+                          <span className={`font-medium ${financialData.change_orders.approved_revenue_impact >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {financialData.change_orders.approved_revenue_impact >= 0 ? '+' : ''}{formatCurrency(financialData.change_orders.approved_revenue_impact)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-2 border-b border-gray-100 font-semibold">
+                          <span className="text-corporate-dark">Revised Contract</span>
+                          <span className="text-corporate-dark">{formatCurrency(financialData.contract.revised_value)}</span>
+                        </div>
+                        {financialData.change_orders.pending_count > 0 && (
+                          <div className="flex justify-between py-2 bg-yellow-50 rounded px-2">
+                            <span className="text-yellow-700">Pending Exposure ({financialData.change_orders.pending_count})</span>
+                            <span className="font-medium text-yellow-700">{formatCurrency(financialData.change_orders.pending_revenue_exposure)}</span>
+                          </div>
+                        )}
+                        {financialData.change_orders.total_days_impact !== 0 && (
+                          <div className="flex justify-between py-2">
+                            <span className="text-corporate-gray">Schedule Impact</span>
+                            <span className="font-medium">{financialData.change_orders.total_days_impact > 0 ? '+' : ''}{financialData.change_orders.total_days_impact} days</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Retainage */}
+                  {financialData.retainage && (financialData.retainage.receivable.held > 0 || financialData.retainage.payable.held > 0) && (
+                    <div className="card">
+                      <h3 className="font-semibold text-corporate-dark mb-4">Retainage</h3>
+                      <div className="space-y-3">
+                        <div className="flex justify-between py-2 border-b border-gray-100">
+                          <span className="text-corporate-gray">Receivable (held by customer)</span>
+                          <span className="font-medium text-amber-600">{formatCurrency(financialData.retainage.receivable.outstanding)}</span>
+                        </div>
+                        {financialData.retainage.receivable.released > 0 && (
+                          <div className="flex justify-between py-2 border-b border-gray-100">
+                            <span className="text-corporate-gray">Receivable Released</span>
+                            <span className="font-medium text-green-600">{formatCurrency(financialData.retainage.receivable.released)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between py-2 border-b border-gray-100">
+                          <span className="text-corporate-gray">Payable (held from vendors)</span>
+                          <span className="font-medium text-amber-600">{formatCurrency(financialData.retainage.payable.outstanding)}</span>
+                        </div>
+                        {financialData.retainage.payable.released > 0 && (
+                          <div className="flex justify-between py-2 border-b border-gray-100">
+                            <span className="text-corporate-gray">Payable Released</span>
+                            <span className="font-medium text-green-600">{formatCurrency(financialData.retainage.payable.released)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between py-2 pt-3 font-semibold">
+                          <span className="text-corporate-dark">Net Retainage Position</span>
+                          <span className={financialData.retainage.net_retainage >= 0 ? 'text-amber-600' : 'text-green-600'}>
+                            {formatCurrency(financialData.retainage.net_retainage)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Cost Breakdown & Profitability */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

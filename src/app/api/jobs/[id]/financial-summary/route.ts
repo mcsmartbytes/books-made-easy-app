@@ -31,32 +31,50 @@ export async function GET(
       return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
 
-    // Fetch invoices linked to this job
-    const { data: invoices } = await supabaseAdmin
-      .from('invoices')
-      .select('id, invoice_number, status, issue_date, due_date, total, amount_paid, customer_id')
-      .eq('job_id', jobId);
+    // Fetch invoices, bills, expenses, and change orders in parallel
+    const [invoicesRes, billsRes, expensesRes, changeOrdersRes] = await Promise.all([
+      supabaseAdmin
+        .from('invoices')
+        .select('id, invoice_number, status, issue_date, due_date, total, amount_paid, customer_id, retainage_percent, retainage_amount, retainage_released')
+        .eq('job_id', jobId),
+      supabaseAdmin
+        .from('bills')
+        .select('id, bill_number, status, bill_date, due_date, total, amount_paid, vendor_id, retainage_percent, retainage_amount, retainage_released')
+        .eq('job_id', jobId),
+      supabaseAdmin
+        .from('expenses')
+        .select('id, description, amount, date, vendor, category_id')
+        .eq('job_id', jobId),
+      supabaseAdmin
+        .from('change_orders')
+        .select('id, co_number, title, status, type, revenue_impact, cost_impact, margin_impact, days_impact, approved_date')
+        .eq('job_id', jobId),
+    ]);
 
-    // Fetch bills linked to this job
-    const { data: bills } = await supabaseAdmin
-      .from('bills')
-      .select('id, bill_number, status, bill_date, due_date, total, amount_paid, vendor_id')
-      .eq('job_id', jobId);
-
-    // Fetch expenses linked to this job
-    const { data: expenses } = await supabaseAdmin
-      .from('expenses')
-      .select('id, description, amount, date, vendor, category_id')
-      .eq('job_id', jobId);
+    const invoices = invoicesRes.data;
+    const bills = billsRes.data;
+    const expenses = expensesRes.data;
 
     const allInvoices = invoices || [];
     const allBills = bills || [];
     const allExpenses = expenses || [];
+    const allChangeOrders = (changeOrdersRes.data || []) as any[];
     const phases: any[] = Array.isArray(job.job_phases) ? job.job_phases : [];
 
-    // --- Contract & Budget ---
-    const contractValue = Number(job.estimated_revenue) || 0;
-    const estimatedCost = Number(job.estimated_cost) || 0;
+    // --- Change Orders ---
+    const approvedCOs = allChangeOrders.filter((co: any) => co.status === 'approved');
+    const pendingCOs = allChangeOrders.filter((co: any) => co.status === 'pending');
+    const approvedRevenueImpact = approvedCOs.reduce((s: number, co: any) => s + (Number(co.revenue_impact) || 0), 0);
+    const approvedCostImpact = approvedCOs.reduce((s: number, co: any) => s + (Number(co.cost_impact) || 0), 0);
+    const pendingRevenueExposure = pendingCOs.reduce((s: number, co: any) => s + (Number(co.revenue_impact) || 0), 0);
+    const pendingCostExposure = pendingCOs.reduce((s: number, co: any) => s + (Number(co.cost_impact) || 0), 0);
+    const totalDaysImpact = approvedCOs.reduce((s: number, co: any) => s + (Number(co.days_impact) || 0), 0);
+
+    // --- Contract & Budget (with Change Orders) ---
+    const originalContractValue = Number(job.estimated_revenue) || 0;
+    const originalEstimatedCost = Number(job.estimated_cost) || 0;
+    const contractValue = originalContractValue + approvedRevenueImpact;
+    const estimatedCost = originalEstimatedCost + approvedCostImpact;
     const estimatedProfit = contractValue - estimatedCost;
     const estimatedMargin = contractValue > 0 ? (estimatedProfit / contractValue) * 100 : 0;
 
@@ -72,6 +90,11 @@ export async function GET(
       overdue: activeInvoices.filter((i: any) => i.status === 'overdue'),
     };
 
+    // --- Retainage (Receivable) ---
+    const retainageReceivableHeld = activeInvoices.reduce((s: number, i: any) => s + (Number(i.retainage_amount) || 0), 0);
+    const retainageReceivableReleased = activeInvoices.reduce((s: number, i: any) => s + (Number(i.retainage_released) || 0), 0);
+    const retainageReceivableOutstanding = retainageReceivableHeld - retainageReceivableReleased;
+
     // --- Costs ---
     const activeBills = allBills.filter((b: any) => b.status !== 'cancelled');
     const committedCosts = activeBills.reduce((s: number, b: any) => s + (b.total || 0), 0);
@@ -79,6 +102,11 @@ export async function GET(
     const outstandingAP = committedCosts - billsPaid;
     const expenseCosts = allExpenses.reduce((s: number, e: any) => s + (e.amount || 0), 0);
     const totalActualCost = Math.max(committedCosts + expenseCosts, Number(job.actual_cost) || 0);
+
+    // --- Retainage (Payable) ---
+    const retainagePayableHeld = activeBills.reduce((s: number, b: any) => s + (Number(b.retainage_amount) || 0), 0);
+    const retainagePayableReleased = activeBills.reduce((s: number, b: any) => s + (Number(b.retainage_released) || 0), 0);
+    const retainagePayableOutstanding = retainagePayableHeld - retainagePayableReleased;
 
     // --- Completion ---
     const totalPhases = phases.length;
@@ -184,6 +212,12 @@ export async function GET(
     if (marginHealth === 'critical') {
       risks.push('Gross margin critically low — review cost controls');
     }
+    if (retainageReceivableOutstanding > contractValue * 0.08) {
+      risks.push(`Retainage receivable ${formatCurrency(retainageReceivableOutstanding)} — significant cash tied up`);
+    }
+    if (pendingRevenueExposure > contractValue * 0.1) {
+      risks.push(`Pending COs: ${formatCurrency(pendingRevenueExposure)} revenue exposure — ${pendingCOs.length} awaiting approval`);
+    }
     if (burnRate && burnRate.projected_completion_date && job.end_date) {
       const projected = new Date(burnRate.projected_completion_date);
       const planned = new Date(String(job.end_date));
@@ -205,11 +239,14 @@ export async function GET(
       },
 
       contract: {
-        original_value: contractValue,
-        revised_value: contractValue, // will incorporate change orders in Phase 2
-        estimated_cost: estimatedCost,
+        original_value: originalContractValue,
+        revised_value: round(contractValue),
+        original_cost: originalEstimatedCost,
+        estimated_cost: round(estimatedCost),
         estimated_profit: round(estimatedProfit),
         estimated_margin: round(estimatedMargin),
+        co_revenue_impact: round(approvedRevenueImpact),
+        co_cost_impact: round(approvedCostImpact),
       },
 
       completion: {
@@ -261,6 +298,31 @@ export async function GET(
         projected_margin: round(projectedMargin),
         margin_health: marginHealth,
         margin_variance: round(grossMargin - estimatedMargin),
+      },
+
+      change_orders: {
+        total_count: allChangeOrders.length,
+        approved_count: approvedCOs.length,
+        pending_count: pendingCOs.length,
+        approved_revenue_impact: round(approvedRevenueImpact),
+        approved_cost_impact: round(approvedCostImpact),
+        pending_revenue_exposure: round(pendingRevenueExposure),
+        pending_cost_exposure: round(pendingCostExposure),
+        total_days_impact: totalDaysImpact,
+      },
+
+      retainage: {
+        receivable: {
+          held: round(retainageReceivableHeld),
+          released: round(retainageReceivableReleased),
+          outstanding: round(Math.max(retainageReceivableOutstanding, 0)),
+        },
+        payable: {
+          held: round(retainagePayableHeld),
+          released: round(retainagePayableReleased),
+          outstanding: round(Math.max(retainagePayableOutstanding, 0)),
+        },
+        net_retainage: round(Math.max(retainageReceivableOutstanding, 0) - Math.max(retainagePayableOutstanding, 0)),
       },
 
       burn_rate: burnRate,

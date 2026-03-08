@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { user_id, vendor_id, bill_number, bill_date, due_date, items, category, description, notes } = body;
+    const { user_id, vendor_id, bill_number, bill_date, due_date, items, category, description, notes, job_id, job_phase_id, retainage_percent } = body;
 
     if (!user_id || !due_date) {
       return NextResponse.json({ error: 'user_id and due_date are required' }, { status: 400 });
@@ -93,12 +93,18 @@ export async function POST(request: NextRequest) {
     const taxAmount = (items || []).reduce((sum: number, item: any) => sum + (item.tax_amount || 0), 0);
     const total = subtotal + taxAmount;
 
+    // Calculate retainage
+    const retainagePct = Number(retainage_percent) || 0;
+    const retainageAmount = total * (retainagePct / 100);
+
     // Create bill
     const { data: bill, error: billError } = await supabaseAdmin
       .from('bills')
       .insert({
         user_id,
         vendor_id,
+        job_id: job_id || null,
+        job_phase_id: job_phase_id || null,
         bill_number,
         bill_date: bill_date || new Date().toISOString().split('T')[0],
         due_date,
@@ -106,6 +112,9 @@ export async function POST(request: NextRequest) {
         subtotal,
         tax_amount: taxAmount,
         total,
+        retainage_percent: retainagePct,
+        retainage_amount: retainageAmount,
+        retainage_released: 0,
         description,
         notes,
         status: 'unpaid',

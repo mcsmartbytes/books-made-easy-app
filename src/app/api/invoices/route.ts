@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { user_id, customer_id, invoice_number, due_date, items, tax_rate, notes, terms } = body;
+    const { user_id, customer_id, invoice_number, due_date, items, tax_rate, notes, terms, job_id, job_phase_id, retainage_percent } = body;
 
     if (!user_id || !invoice_number || !due_date) {
       return NextResponse.json({ error: 'user_id, invoice_number, and due_date are required' }, { status: 400 });
@@ -69,18 +69,27 @@ export async function POST(request: NextRequest) {
     const taxAmount = subtotal * ((tax_rate || 0) / 100);
     const total = subtotal + taxAmount;
 
+    // Calculate retainage
+    const retainagePct = Number(retainage_percent) || 0;
+    const retainageAmount = total * (retainagePct / 100);
+
     // Create invoice
     const { data: invoice, error: invoiceError } = await supabaseAdmin
       .from('invoices')
       .insert({
         user_id,
         customer_id,
+        job_id: job_id || null,
+        job_phase_id: job_phase_id || null,
         invoice_number,
         due_date,
         subtotal,
         tax_rate: tax_rate || 0,
         tax_amount: taxAmount,
         total,
+        retainage_percent: retainagePct,
+        retainage_amount: retainageAmount,
+        retainage_released: 0,
         notes,
         terms,
         status: 'draft',
