@@ -50,7 +50,9 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
   const [phases, setPhases] = useState<Phase[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'phases' | 'transactions'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'financial' | 'phases' | 'transactions'>('overview');
+  const [financialData, setFinancialData] = useState<any>(null);
+  const [financialLoading, setFinancialLoading] = useState(false);
   const [editingPhase, setEditingPhase] = useState<string | null>(null);
   const [showAddPhase, setShowAddPhase] = useState(false);
   const [newPhase, setNewPhase] = useState({ name: '', description: '', estimated_hours: 0, estimated_cost: 0 });
@@ -196,6 +198,29 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
     }
   };
 
+  const loadFinancialSummary = async () => {
+    setFinancialLoading(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    try {
+      const res = await fetch(`/api/jobs/${params.id}/financial-summary?user_id=${session.user.id}`);
+      const result = await res.json();
+      if (result.success) {
+        setFinancialData(result.data);
+      }
+    } catch (err) {
+      console.error('Failed to load financial summary:', err);
+    }
+    setFinancialLoading(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'financial' && !financialData) {
+      loadFinancialSummary();
+    }
+  }, [activeTab]);
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
   };
@@ -335,7 +360,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
       {/* Tabs */}
       <div className="border-b border-gray-200">
         <nav className="flex gap-8">
-          {(['overview', 'phases', 'transactions'] as const).map((tab) => (
+          {(['overview', 'financial', 'phases', 'transactions'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -403,6 +428,273 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'financial' && (
+        <div className="space-y-6">
+          {financialLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+            </div>
+          ) : financialData ? (
+            <>
+              {/* Risk Alerts */}
+              {financialData.risks.length > 0 && (
+                <div className="card border-l-4 border-red-500 bg-red-50">
+                  <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    Risk Alerts ({financialData.risks.length})
+                  </h3>
+                  <ul className="space-y-1">
+                    {financialData.risks.map((risk: string, i: number) => (
+                      <li key={i} className="text-sm text-red-700 flex items-start gap-2">
+                        <span className="mt-1 w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
+                        {risk}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Contract & WIP Summary */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="stat-card">
+                  <p className="text-sm text-corporate-gray">Contract Value</p>
+                  <p className="text-xl font-bold text-corporate-dark">{formatCurrency(financialData.contract.revised_value)}</p>
+                  <p className="text-xs text-corporate-gray">Est. Cost: {formatCurrency(financialData.contract.estimated_cost)}</p>
+                </div>
+                <div className="stat-card">
+                  <p className="text-sm text-corporate-gray">Revenue Recognized</p>
+                  <p className="text-xl font-bold text-green-600">{formatCurrency(financialData.wip.revenue_recognized)}</p>
+                  <p className="text-xs text-corporate-gray">{financialData.completion.percent_complete_cost.toFixed(1)}% complete (cost)</p>
+                </div>
+                <div className="stat-card">
+                  <p className="text-sm text-corporate-gray">Gross Profit</p>
+                  <p className={`text-xl font-bold ${financialData.profitability.gross_profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatCurrency(financialData.profitability.gross_profit)}
+                  </p>
+                  <p className="text-xs text-corporate-gray">{financialData.profitability.gross_margin.toFixed(1)}% margin</p>
+                </div>
+                <div className="stat-card">
+                  <p className="text-sm text-corporate-gray">Remaining Backlog</p>
+                  <p className="text-xl font-bold text-corporate-dark">{formatCurrency(financialData.wip.remaining_backlog)}</p>
+                  <p className="text-xs text-corporate-gray">Cost to Complete: {formatCurrency(financialData.costs.cost_to_complete)}</p>
+                </div>
+              </div>
+
+              {/* Billing Position */}
+              <div className="card">
+                <h3 className="font-semibold text-corporate-dark mb-4">Billing Position</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className={`p-4 rounded-lg border ${
+                    financialData.wip.billing_status === 'overbilled' ? 'bg-amber-50 border-amber-200' :
+                    financialData.wip.billing_status === 'underbilled' ? 'bg-red-50 border-red-200' :
+                    'bg-green-50 border-green-200'
+                  }`}>
+                    <p className="text-xs text-corporate-gray mb-1">Status</p>
+                    <p className={`text-lg font-bold ${
+                      financialData.wip.billing_status === 'overbilled' ? 'text-amber-700' :
+                      financialData.wip.billing_status === 'underbilled' ? 'text-red-600' :
+                      'text-green-600'
+                    }`}>
+                      {financialData.wip.billing_status === 'overbilled' ? 'Overbilled' :
+                       financialData.wip.billing_status === 'underbilled' ? 'Underbilled' : 'Even'}
+                    </p>
+                    <p className="text-sm text-corporate-gray">
+                      {financialData.wip.overbilling > 0 && `${formatCurrency(financialData.wip.overbilling)} (liability)`}
+                      {financialData.wip.underbilling > 0 && `${formatCurrency(financialData.wip.underbilling)} (asset)`}
+                      {financialData.wip.overbilling === 0 && financialData.wip.underbilling === 0 && 'Billings match earned revenue'}
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-lg border bg-gray-50 border-gray-200">
+                    <p className="text-xs text-corporate-gray mb-1">Billings to Date</p>
+                    <p className="text-lg font-bold text-corporate-dark">{formatCurrency(financialData.billings.billings_to_date)}</p>
+                    <p className="text-sm text-corporate-gray">
+                      {financialData.billings.invoices_count} invoices ({financialData.billings.paid_count} paid, {financialData.billings.overdue_count} overdue)
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-lg border bg-gray-50 border-gray-200">
+                    <p className="text-xs text-corporate-gray mb-1">Outstanding A/R</p>
+                    <p className="text-lg font-bold text-corporate-dark">{formatCurrency(financialData.billings.outstanding_ar)}</p>
+                    <p className="text-sm text-corporate-gray">
+                      Collected: {formatCurrency(financialData.billings.payments_received)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cost Breakdown & Profitability */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="card">
+                  <h3 className="font-semibold text-corporate-dark mb-4">Cost Breakdown</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-2 border-b border-gray-100">
+                      <span className="text-corporate-gray">Estimated Cost</span>
+                      <span className="font-medium text-corporate-dark">{formatCurrency(financialData.contract.estimated_cost)}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100">
+                      <span className="text-corporate-gray">Committed Costs (Bills)</span>
+                      <span className="font-medium text-corporate-dark">{formatCurrency(financialData.costs.committed_costs)}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100">
+                      <span className="text-corporate-gray">Direct Expenses</span>
+                      <span className="font-medium text-corporate-dark">{formatCurrency(financialData.costs.expense_costs)}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100 font-semibold">
+                      <span className="text-corporate-dark">Total Actual Cost</span>
+                      <span className={financialData.costs.total_actual_cost > financialData.contract.estimated_cost ? 'text-red-600' : 'text-corporate-dark'}>
+                        {formatCurrency(financialData.costs.total_actual_cost)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100">
+                      <span className="text-corporate-gray">Cost to Complete</span>
+                      <span className="font-medium text-corporate-dark">{formatCurrency(financialData.costs.cost_to_complete)}</span>
+                    </div>
+                    <div className="flex justify-between py-2 font-semibold">
+                      <span className="text-corporate-dark">Projected Total Cost</span>
+                      <span className="text-corporate-dark">{formatCurrency(financialData.costs.projected_total_cost)}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100">
+                      <span className="text-corporate-gray">Outstanding A/P</span>
+                      <span className="font-medium text-red-600">{formatCurrency(financialData.costs.outstanding_ap)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <h3 className="font-semibold text-corporate-dark mb-4">Profitability Analysis</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-2 border-b border-gray-100">
+                      <span className="text-corporate-gray">Estimated Margin</span>
+                      <span className="font-medium text-corporate-dark">{financialData.contract.estimated_margin.toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100">
+                      <span className="text-corporate-gray">Current Gross Margin</span>
+                      <span className={`font-medium ${financialData.profitability.gross_margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {financialData.profitability.gross_margin.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100">
+                      <span className="text-corporate-gray">Margin Variance</span>
+                      <span className={`font-medium ${financialData.profitability.margin_variance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {financialData.profitability.margin_variance >= 0 ? '+' : ''}{financialData.profitability.margin_variance.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100">
+                      <span className="text-corporate-gray">Projected Margin at Completion</span>
+                      <span className={`font-medium ${financialData.profitability.projected_margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {financialData.profitability.projected_margin.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2 pt-3 font-semibold">
+                      <span className="text-corporate-dark">Projected Profit</span>
+                      <span className={financialData.profitability.projected_profit >= 0 ? 'text-green-600' : 'text-red-600'}>
+                        {formatCurrency(financialData.profitability.projected_profit)}
+                      </span>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-corporate-gray">Margin Health:</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          financialData.profitability.margin_health === 'healthy' ? 'bg-green-100 text-green-700' :
+                          financialData.profitability.margin_health === 'warning' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {financialData.profitability.margin_health === 'healthy' ? 'Healthy' :
+                           financialData.profitability.margin_health === 'warning' ? 'Warning' : 'Critical'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Burn Rate */}
+              {financialData.burn_rate && (
+                <div className="card">
+                  <h3 className="font-semibold text-corporate-dark mb-4">Burn Rate Analysis</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                    <div>
+                      <p className="text-xs text-corporate-gray">Daily Burn</p>
+                      <p className="font-medium text-corporate-dark">{formatCurrency(financialData.burn_rate.daily)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-corporate-gray">Weekly Burn</p>
+                      <p className="font-medium text-corporate-dark">{formatCurrency(financialData.burn_rate.weekly)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-corporate-gray">Monthly Burn</p>
+                      <p className="font-medium text-corporate-dark">{formatCurrency(financialData.burn_rate.monthly)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-corporate-gray">Est. Days Remaining</p>
+                      <p className="font-medium text-corporate-dark">
+                        {financialData.burn_rate.estimated_days_remaining ?? 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-corporate-gray">Projected Completion</p>
+                      <p className="font-medium text-corporate-dark">
+                        {financialData.burn_rate.projected_completion_date
+                          ? formatDate(financialData.burn_rate.projected_completion_date)
+                          : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-corporate-gray mt-3">
+                    Based on {financialData.burn_rate.days_of_cost_data} days of cost data
+                  </p>
+                </div>
+              )}
+
+              {/* Completion Progress */}
+              <div className="card">
+                <h3 className="font-semibold text-corporate-dark mb-4">Completion Progress</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="text-sm text-corporate-gray">Cost-to-Cost Method</span>
+                      <span className="text-sm font-medium">{financialData.completion.percent_complete_cost.toFixed(1)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div
+                        className={`h-3 rounded-full transition-all ${
+                          financialData.completion.percent_complete_cost >= 100 ? 'bg-green-500' :
+                          financialData.completion.percent_complete_cost >= 50 ? 'bg-blue-500' : 'bg-amber-500'
+                        }`}
+                        style={{ width: `${Math.min(financialData.completion.percent_complete_cost, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="text-sm text-corporate-gray">Phase Completion</span>
+                      <span className="text-sm font-medium">
+                        {financialData.completion.percent_complete_phases.toFixed(1)}%
+                        ({financialData.completion.completed_phases}/{financialData.completion.total_phases} phases)
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div
+                        className={`h-3 rounded-full transition-all ${
+                          financialData.completion.percent_complete_phases >= 100 ? 'bg-green-500' :
+                          financialData.completion.percent_complete_phases >= 50 ? 'bg-blue-500' : 'bg-amber-500'
+                        }`}
+                        style={{ width: `${Math.min(financialData.completion.percent_complete_phases, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="card text-center py-8">
+              <p className="text-corporate-gray">Failed to load financial summary. Click the Financial tab to retry.</p>
+            </div>
+          )}
         </div>
       )}
 
