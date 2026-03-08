@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/utils/supabase';
+import ConstructionAlerts from '@/components/ConstructionAlerts';
 
 interface DashboardStats {
   totalRevenue: number;
@@ -237,6 +238,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Two column layout */}
+      {/* Construction Alerts */}
+      <ConstructionAlerts />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Activity */}
         <div className="lg:col-span-2 card">
