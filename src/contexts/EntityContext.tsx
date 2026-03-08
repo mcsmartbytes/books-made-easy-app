@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { supabase } from '@/utils/supabase';
+import { useSession } from 'next-auth/react';
 
 interface Entity {
   id: string;
@@ -29,15 +29,26 @@ interface EntityContextType {
   refreshEntities: () => Promise<void>;
 }
 
-const EntityContext = createContext<EntityContextType | undefined>(undefined);
+const EntityContext = createContext<EntityContextType>({
+  currentEntityId: null,
+  currentEntity: null,
+  entities: [],
+  organization: null,
+  setCurrentEntity: () => {},
+  isConsolidated: true,
+  loading: false,
+  refreshEntities: async () => {},
+});
 
 const STORAGE_KEY = 'bme_selected_entity_id';
 
 export function EntityProvider({ children }: { children: ReactNode }) {
+  const { data: session, status } = useSession();
   const [currentEntityId, setCurrentEntityId] = useState<string | null>(null);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const currentEntity = currentEntityId
     ? entities.find((e) => e.id === currentEntityId) || null
@@ -45,27 +56,28 @@ export function EntityProvider({ children }: { children: ReactNode }) {
 
   const isConsolidated = currentEntityId === null;
 
+  // Only load entities once session is authenticated
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && stored !== 'all') {
-      setCurrentEntityId(stored);
+    if (status === 'authenticated' && session?.user && !loaded) {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+      if (stored && stored !== 'all') {
+        setCurrentEntityId(stored);
+      }
+      loadEntities();
     }
-    loadEntities();
-  }, []);
+  }, [status, session, loaded]);
 
   const loadEntities = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
+    const userId = (session?.user as any)?.id;
+    if (!userId) return;
 
-      // First load organizations
-      const orgRes = await fetch(`/api/organizations?user_id=${user.id}`);
+    setLoading(true);
+    try {
+      const orgRes = await fetch(`/api/organizations?user_id=${userId}`);
       const orgResult = await orgRes.json();
 
       if (!orgResult.success || !orgResult.data?.length) {
+        setLoaded(true);
         setLoading(false);
         return;
       }
@@ -73,16 +85,14 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       const org = orgResult.data[0];
       setOrganization(org);
 
-      // Then load entities for this organization
-      const entRes = await fetch(`/api/entities?user_id=${user.id}&organization_id=${org.id}`);
+      const entRes = await fetch(`/api/entities?user_id=${userId}&organization_id=${org.id}`);
       const entResult = await entRes.json();
 
       if (entResult.success) {
         const entityList = entResult.data || [];
         setEntities(entityList);
 
-        // Validate stored selection still exists
-        const stored = localStorage.getItem(STORAGE_KEY);
+        const stored = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
         if (stored && stored !== 'all') {
           const exists = entityList.some((e: Entity) => e.id === stored);
           if (!exists && entityList.length > 0) {
@@ -94,6 +104,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to load entities:', error);
     } finally {
+      setLoaded(true);
       setLoading(false);
     }
   };
@@ -108,6 +119,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshEntities = async () => {
+    setLoaded(false);
     await loadEntities();
   };
 
@@ -130,9 +142,5 @@ export function EntityProvider({ children }: { children: ReactNode }) {
 }
 
 export function useEntity() {
-  const context = useContext(EntityContext);
-  if (context === undefined) {
-    throw new Error('useEntity must be used within an EntityProvider');
-  }
-  return context;
+  return useContext(EntityContext);
 }
