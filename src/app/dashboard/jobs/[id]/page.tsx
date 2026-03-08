@@ -612,6 +612,82 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                 </div>
               </div>
 
+              {/* Forecast Detail (CTC / Margin) */}
+              {financialData.forecast && (
+                <div className="card">
+                  <h3 className="font-semibold text-corporate-dark mb-4">Cost-to-Complete Forecast</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-2 text-corporate-gray font-medium">Method</th>
+                          <th className="text-right py-2 text-corporate-gray font-medium">ETC</th>
+                          <th className="text-right py-2 text-corporate-gray font-medium">EAC</th>
+                          <th className="text-right py-2 text-corporate-gray font-medium">VAC</th>
+                          <th className="text-right py-2 text-corporate-gray font-medium">Proj. Margin</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b border-gray-100">
+                          <td className="py-2 text-corporate-slate">Budget-based</td>
+                          <td className="py-2 text-right">{formatCurrency(financialData.forecast.cost_to_complete.budget_etc)}</td>
+                          <td className="py-2 text-right">{formatCurrency(financialData.forecast.cost_to_complete.budget_eac)}</td>
+                          <td className={`py-2 text-right ${financialData.forecast.cost_to_complete.vac_budget >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatCurrency(financialData.forecast.cost_to_complete.vac_budget)}
+                          </td>
+                          <td className="py-2 text-right">{financialData.forecast.margin_forecast.projected_margin_budget.toFixed(1)}%</td>
+                        </tr>
+                        <tr className="border-b border-gray-100">
+                          <td className="py-2 text-corporate-slate">
+                            Performance (CPI: {financialData.forecast.cost_to_complete.cpi.toFixed(2)})
+                          </td>
+                          <td className="py-2 text-right">{formatCurrency(financialData.forecast.cost_to_complete.performance_etc)}</td>
+                          <td className="py-2 text-right">{formatCurrency(financialData.forecast.cost_to_complete.performance_eac)}</td>
+                          <td className={`py-2 text-right ${financialData.forecast.cost_to_complete.vac_performance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatCurrency(financialData.forecast.cost_to_complete.vac_performance)}
+                          </td>
+                          <td className="py-2 text-right">{financialData.forecast.margin_forecast.projected_margin_performance.toFixed(1)}%</td>
+                        </tr>
+                        <tr className="border-b border-gray-100">
+                          <td className="py-2 text-corporate-slate">
+                            Trend ({financialData.forecast.cost_to_complete.burn_rate_trend})
+                          </td>
+                          <td className="py-2 text-right">{formatCurrency(financialData.forecast.cost_to_complete.trend_etc)}</td>
+                          <td className="py-2 text-right">{formatCurrency(financialData.forecast.cost_to_complete.trend_eac)}</td>
+                          <td className={`py-2 text-right ${financialData.forecast.cost_to_complete.vac_trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatCurrency(financialData.forecast.cost_to_complete.vac_trend)}
+                          </td>
+                          <td className="py-2 text-right">{financialData.forecast.margin_forecast.projected_margin_trend.toFixed(1)}%</td>
+                        </tr>
+                        <tr className="bg-primary-50 font-semibold">
+                          <td className="py-2 text-corporate-dark">Recommended</td>
+                          <td className="py-2 text-right">{formatCurrency(financialData.forecast.cost_to_complete.recommended_etc)}</td>
+                          <td className="py-2 text-right">{formatCurrency(financialData.forecast.cost_to_complete.recommended_eac)}</td>
+                          <td className={`py-2 text-right ${financialData.forecast.cost_to_complete.vac_recommended >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatCurrency(financialData.forecast.cost_to_complete.vac_recommended)}
+                          </td>
+                          <td className={`py-2 text-right ${financialData.forecast.margin_forecast.projected_margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {financialData.forecast.margin_forecast.projected_margin.toFixed(1)}%
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-corporate-gray">
+                    <span>Method: {financialData.forecast.cost_to_complete.method_used}</span>
+                    <span>|</span>
+                    <span>Confidence: <span className={`font-medium ${
+                      financialData.forecast.margin_forecast.confidence === 'high' ? 'text-green-600' :
+                      financialData.forecast.margin_forecast.confidence === 'medium' ? 'text-yellow-600' : 'text-gray-500'
+                    }`}>{financialData.forecast.margin_forecast.confidence}</span></span>
+                    <span>|</span>
+                    <span>Margin Erosion: <span className={`font-medium ${financialData.forecast.margin_forecast.margin_erosion >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {financialData.forecast.margin_forecast.margin_erosion >= 0 ? '+' : ''}{financialData.forecast.margin_forecast.margin_erosion.toFixed(1)}%
+                    </span></span>
+                  </div>
+                </div>
+              )}
+
               {/* Burn Rate */}
               {financialData.burn_rate && (
                 <div className="card">

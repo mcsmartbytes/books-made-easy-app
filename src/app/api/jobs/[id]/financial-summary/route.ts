@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/utils/supabaseAdmin';
+import { calculateCostToComplete, calculateMarginForecast, type CostDataPoint, type ForecastInput } from '@/lib/jobForecasting';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,50 +105,62 @@ export async function GET(
     const grossMargin = revenueRecognized > 0 ? (grossProfit / revenueRecognized) * 100 : 0;
     const actualProfit = billingsToDate - totalActualCost;
 
-    // --- Cost to Complete ---
-    const costToComplete = Math.max(estimatedCost - totalActualCost, 0);
-    const projectedTotalCost = totalActualCost + costToComplete;
+    // --- Cost History for Forecasting ---
+    const costHistory: CostDataPoint[] = [
+      ...allExpenses.map((e: any) => ({ date: String(e.date), amount: Number(e.amount) || 0 })),
+      ...activeBills.map((b: any) => ({ date: String(b.bill_date), amount: Number(b.total) || 0 })),
+    ].filter(d => d.date && d.amount > 0).sort((a, b) => a.date.localeCompare(b.date));
+
+    // --- Forecasting Engine ---
+    const forecastInput: ForecastInput = {
+      contractValue,
+      estimatedCost,
+      actualCost: totalActualCost,
+      percentComplete,
+      costHistory,
+    };
+
+    const ctc = calculateCostToComplete(forecastInput);
+    const marginForecast = calculateMarginForecast(forecastInput, ctc);
+
+    // Use recommended values for backward compatibility
+    const costToComplete = ctc.recommended_etc;
+    const projectedTotalCost = ctc.recommended_eac;
     const projectedProfit = contractValue - projectedTotalCost;
     const projectedMargin = contractValue > 0 ? (projectedProfit / contractValue) * 100 : 0;
 
     // --- Burn Rate ---
     let burnRate = null;
-    if (allExpenses.length > 0 || activeBills.length > 0) {
-      const allCostDates = [
-        ...allExpenses.map((e: any) => e.date),
-        ...activeBills.map((b: any) => b.bill_date),
-      ].filter(Boolean).sort();
+    if (costHistory.length >= 2) {
+      const firstDate = new Date(costHistory[0].date);
+      const lastDate = new Date(costHistory[costHistory.length - 1].date);
+      const daySpan = Math.max((lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24), 1);
+      const dailyBurn = totalActualCost / daySpan;
+      const weeklyBurn = dailyBurn * 7;
+      const monthlyBurn = dailyBurn * 30;
+      const daysRemaining = costToComplete > 0 && dailyBurn > 0
+        ? Math.ceil(costToComplete / dailyBurn)
+        : null;
+      const projectedCompletionDate = daysRemaining
+        ? new Date(Date.now() + daysRemaining * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        : null;
 
-      if (allCostDates.length >= 2) {
-        const firstDate = new Date(allCostDates[0]);
-        const lastDate = new Date(allCostDates[allCostDates.length - 1]);
-        const daySpan = Math.max((lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24), 1);
-        const dailyBurn = totalActualCost / daySpan;
-        const weeklyBurn = dailyBurn * 7;
-        const monthlyBurn = dailyBurn * 30;
-        const daysRemaining = costToComplete > 0 && dailyBurn > 0
-          ? Math.ceil(costToComplete / dailyBurn)
-          : null;
-        const projectedCompletionDate = daysRemaining
-          ? new Date(Date.now() + daysRemaining * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          : null;
-
-        burnRate = {
-          daily: Math.round(dailyBurn * 100) / 100,
-          weekly: Math.round(weeklyBurn * 100) / 100,
-          monthly: Math.round(monthlyBurn * 100) / 100,
-          days_of_cost_data: Math.round(daySpan),
-          estimated_days_remaining: daysRemaining,
-          projected_completion_date: projectedCompletionDate,
-        };
-      }
+      burnRate = {
+        daily: Math.round(dailyBurn * 100) / 100,
+        weekly: Math.round(weeklyBurn * 100) / 100,
+        monthly: Math.round(monthlyBurn * 100) / 100,
+        days_of_cost_data: Math.round(daySpan),
+        estimated_days_remaining: daysRemaining,
+        projected_completion_date: projectedCompletionDate,
+        trend: ctc.burn_rate_trend,
+      };
     }
 
     // --- Margin Health ---
     let marginHealth: 'healthy' | 'warning' | 'critical' = 'healthy';
-    if (grossMargin < 5 || (estimatedMargin > 0 && grossMargin < estimatedMargin * 0.5)) {
+    if (marginForecast.projected_margin < 5 || (estimatedMargin > 0 && marginForecast.projected_margin < estimatedMargin * 0.5)) {
       marginHealth = 'critical';
-    } else if (estimatedMargin > 0 && grossMargin < estimatedMargin * 0.8) {
+    } else if (estimatedMargin > 0 && marginForecast.projected_margin < estimatedMargin * 0.8) {
       marginHealth = 'warning';
     }
 
@@ -251,6 +264,11 @@ export async function GET(
       },
 
       burn_rate: burnRate,
+
+      forecast: {
+        cost_to_complete: ctc,
+        margin_forecast: marginForecast,
+      },
 
       risks,
 
