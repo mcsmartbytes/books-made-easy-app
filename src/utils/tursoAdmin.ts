@@ -99,6 +99,39 @@ const RELATION_MAP: Record<string, Record<string, { fk: string; type: 'belongs_t
   change_orders: {
     jobs: { fk: 'job_id', type: 'belongs_to' },
   },
+  sync_connections: {
+    users: { fk: 'user_id', type: 'belongs_to' },
+    entities: { fk: 'entity_id', type: 'belongs_to' },
+    sync_events: { fk: 'connection_id', type: 'has_many' },
+    sync_log: { fk: 'connection_id', type: 'has_many' },
+  },
+  sync_events: {
+    sync_connections: { fk: 'connection_id', type: 'belongs_to' },
+  },
+  sync_log: {
+    sync_connections: { fk: 'connection_id', type: 'belongs_to' },
+    sync_events: { fk: 'last_event_id', type: 'belongs_to' },
+  },
+  sync_conflicts: {
+    sync_connections: { fk: 'connection_id', type: 'belongs_to' },
+    sync_log: { fk: 'sync_log_id', type: 'belongs_to' },
+  },
+  sov_lines: {
+    jobs: { fk: 'job_id', type: 'belongs_to' },
+    cost_codes: { fk: 'cost_code_id', type: 'belongs_to' },
+  },
+  equipment_log: {
+    jobs: { fk: 'job_id', type: 'belongs_to' },
+    cost_codes: { fk: 'cost_code_id', type: 'belongs_to' },
+  },
+  timecards: {
+    jobs: { fk: 'job_id', type: 'belongs_to' },
+    cost_codes: { fk: 'cost_code_id', type: 'belongs_to' },
+    bills: { fk: 'bill_id', type: 'belongs_to' },
+  },
+  contractor_compliance: {
+    vendors: { fk: 'vendor_id', type: 'belongs_to' },
+  },
 };
 
 interface ParsedSelect {
